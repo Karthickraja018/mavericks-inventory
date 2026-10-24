@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { createEmployee, toggleEmployee } from "./actions";
+import { createEmployee, toggleEmployee, updateEmployee } from "./actions";
 export const dynamic = "force-dynamic";
 
 export default async function Employees({
@@ -86,6 +86,14 @@ export default async function Employees({
                   )}
                 </td>
                 <td>
+                  <details><summary style={{ cursor: "pointer", color: "var(--acc)" }}>Edit</summary>
+                    <form action={updateEmployee} style={{ marginTop: 8 }}>
+                      <input type="hidden" name="id" value={e.id} />
+                      <label>Name</label><input name="name" defaultValue={e.name} required />
+                      <label>Base Location</label><input name="baseLocation" defaultValue={e.baseLocation} />
+                      <button style={{ fontSize: 12, padding: "4px 10px" }}>Save</button>
+                    </form>
+                  </details>
                   <form action={toggleEmployee} style={{ margin: 0 }}>
                     <input type="hidden" name="id" value={e.id} />
                     <input type="hidden" name="active" value={e.active ? "1" : "0"} />

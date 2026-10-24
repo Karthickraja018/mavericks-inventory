@@ -1,10 +1,16 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { decide } from "../../actions";
+import { approveImportStock } from "../imports/actions";
 export const dynamic = "force-dynamic";
 export default async function Approvals({ searchParams }: { searchParams: { error?: string } }) {
   const u = await requireUser(["MANAGER", "AUTHORITY"]);
   const rs = await db.request.findMany({ where: { status: u.role === "MANAGER" ? "PENDING_MANAGER" : "PENDING_AUTHORITY" }, include: { requester: true, lines: { include: { item: true } } }, orderBy: { number: "asc" } });
+  const imports = await db.importJob.findMany({
+    where: { status: "AWAITING_APPROVAL", type: { in: ["STOCK_COUNT", "PROCUREMENT"] }, uploadedById: { not: u.id } },
+    include: { uploadedBy: true },
+    orderBy: { createdAt: "asc" },
+  });
   return (
     <>
       <h1>Approvals</h1>
@@ -23,6 +29,7 @@ export default async function Approvals({ searchParams }: { searchParams: { erro
           </div>
         </form>
       ))}
+      {imports.length > 0 && <><h2>Import approvals</h2>{imports.map((job) => <form action={approveImportStock} className="card" key={job.id}><input type="hidden" name="id" value={job.id} /><b>{job.type.replace("_", " ")} / {job.mode}</b><small> · {job.filename} · uploaded by {job.uploadedBy.name}</small><div className="row" style={{ marginTop: 12 }}><div><label htmlFor={`i${job.id}`}>Reason (required to reject)</label><input id={`i${job.id}`} name="reason" /></div><button name="decision" value="reject" className="danger">Reject</button><button name="decision" value="approve">Approve and post</button></div></form>)}</>}
     </>
   );
 }

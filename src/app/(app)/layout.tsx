@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { logout } from "../actions";
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const u = await requireUser();
-  const nav = [["/", "Dashboard"], ["/inventory", "Inventory"], ["/requests", "Requests"]];
+  const nav = [["/", "Dashboard"], ["/inventory", "Inventory"], ["/requests", "Requests"], ["/reports", "Reports"]];
   if (u.role === "MANAGER" || u.role === "AUTHORITY") nav.push(["/approvals", "Approvals"]);
   if (u.role === "ADMIN") nav.push(["/imports", "Imports"], ["/audit", "Audit log"]);
   return (

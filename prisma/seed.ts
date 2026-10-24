@@ -11,7 +11,7 @@ async function main() {
     if (process.env.SEED_DEV_STOCK === "1" && !(await db.stockMovement.count({ where: { itemId: it.id } }))) {
       const admin = await db.user.findUniqueOrThrow({ where: { email: "admin@mavericks.test" } });
       await db.$transaction([db.item.update({ where: { id: it.id }, data: { quantity: qty } }),
-        db.stockMovement.create({ data: { itemId: it.id, change: qty, balanceAfter: qty, type: "OPENING", actorId: admin.id, sourceType: "DEV_SEED", reason: "DEV SEED - not for production" } })]);
+        db.stockMovement.create({ data: { itemId: it.id, change: qty, balanceAfter: qty, type: "OPENING_ADJUSTMENT", actorId: admin.id, sourceType: "DEV_SEED", reason: "DEV SEED - not for production" } })]);
     }
   }
 }
