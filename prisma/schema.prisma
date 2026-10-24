@@ -1,0 +1,386 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  EXECUTIVE
+  MANAGER
+  AUTHORITY
+  ADMIN
+}
+
+enum Status {
+  DRAFT
+  PENDING_MANAGER
+  PENDING_AUTHORITY
+  APPROVED
+  REJECTED
+  NEEDS_REVIEW        // insufficient stock or other review exception
+}
+
+enum ImportType {
+  STOCK_COUNT
+  PROCUREMENT
+  RECIPIENT
+}
+
+enum ImportMode {
+  RECONCILIATION
+  HISTORICAL
+  NEW
+}
+
+enum ImportStatus {
+  UPLOADED
+  VALIDATING
+  VALIDATED
+  AWAITING_APPROVAL
+  COMMITTING
+  COMMITTED
+  FAILED
+  ROLLED_BACK
+}
+
+enum RowStatus {
+  VALID
+  INVALID
+  DUPLICATE
+  WARNING
+}
+
+enum MovementType {
+  PROCUREMENT_IN
+  DISTRIBUTION_OUT
+  RECONCILIATION_ADJUSTMENT
+  OPENING_ADJUSTMENT
+  RETURN_IN
+  MANUAL_ADJUSTMENT
+}
+
+enum ReconciliationStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  POSTED
+}
+
+enum ProcurementStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  POSTED     // stock movement has been posted
+}
+
+// ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+
+  requests         Request[]
+  approvals        Approval[]
+  imports          ImportJob[]
+  reconciliations  ReconciliationReview[] @relation("ReconciliationRequester")
+  reconApprovals   ReconciliationReview[] @relation("ReconciliationApprover")
+  procurements     ProcurementRecord[]    @relation("ProcurementApprover")
+}
+
+// ---------------------------------------------------------------------------
+// Products and variants
+// ---------------------------------------------------------------------------
+
+/// Product master — the generic product (e.g. "Mavericks T-Shirt")
+model Product {
+  id       String  @id @default(cuid())
+  name     String
+  category String  @default("General")
+  active   Boolean @default(true)
+  items    Item[]
+}
+
+/// Item represents a specific variant (e.g. T-Shirt size L, color Ash, brand Crocodile).
+/// The SKU uniquely identifies the variant. quantity is a ledger-maintained cache.
+model Item {
+  id        String   @id @default(cuid())
+  sku       String   @unique
+  name      String                          // display name / full variant label
+  productId String?                         // FK to Product (optional during migration)
+  product   Product? @relation(fields: [productId], references: [id])
+  size      String   @default("")           // canonical: "" means N/A
+  color     String   @default("")           // canonical: "" means N/A
+  brand     String   @default("")           // canonical: "" means N/A
+  category  String   @default("General")
+  unit      String   @default("pcs")
+  quantity  Decimal  @default(0) @db.Decimal(14, 3)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  lines            RequestLine[]
+  moves            StockMovement[]
+  reconciliations  ReconciliationReview[]
+  procurements     ProcurementRecord[]
+  distributions    DistributionRecord[]
+  importRows       ImportRow[]
+
+  // Composite uniqueness for variants under the same product.
+  // Enforced only when productId is not null (managed separately with partial index if needed).
+  @@index([productId, size, color, brand])
+}
+
+// ---------------------------------------------------------------------------
+// Stock ledger
+// ---------------------------------------------------------------------------
+
+model StockMovement {
+  id             String       @id @default(cuid())
+  itemId         String
+  item           Item         @relation(fields: [itemId], references: [id])
+  change         Decimal      @db.Decimal(14, 3)
+  balanceAfter   Decimal      @db.Decimal(14, 3)
+  type           MovementType @default(MANUAL_ADJUSTMENT)
+  refId          String?      // business transaction reference (request ID, procurement ID, etc.)
+  actorId        String
+  sourceType     String?      // "REQUEST", "IMPORT", "RECONCILIATION", "PROCUREMENT", "DEV_SEED"
+  sourceId       String?      // ID of the source record
+  idempotencyKey String?      @unique
+  approvedById   String?
+  approvedAt     DateTime?
+  reason         String?
+  createdAt      DateTime     @default(now())
+
+  @@index([itemId])
+  @@index([sourceType, sourceId])
+}
+
+// ---------------------------------------------------------------------------
+// Distribution requests and approvals
+// ---------------------------------------------------------------------------
+
+model Request {
+  id          String        @id @default(cuid())
+  number      Int           @unique @default(autoincrement())
+  requesterId String
+  requester   User          @relation(fields: [requesterId], references: [id])
+  status      Status        @default(DRAFT)
+  purpose     String        @default("")
+  levels      Int           @default(2)
+  createdAt   DateTime      @default(now())
+  submittedAt DateTime?
+
+  // NEEDS_REVIEW fields
+  reviewReason   String?    // why it entered NEEDS_REVIEW
+  reviewerId     String?    // assigned reviewer (null = any authorized user)
+
+  // Import link (for RECIPIENT:NEW import-created requests)
+  importJobId    String?
+
+  lines          RequestLine[]
+  approvals      Approval[]
+}
+
+model RequestLine {
+  id        String  @id @default(cuid())
+  requestId String
+  request   Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      Item    @relation(fields: [itemId], references: [id])
+  itemName  String
+  quantity  Decimal @db.Decimal(14, 3)
+}
+
+model Approval {
+  id           String   @id @default(cuid())
+  requestId    String
+  request      Request  @relation(fields: [requestId], references: [id])
+  stage        Int
+  approverId   String?
+  approver     User?    @relation(fields: [approverId], references: [id])
+  approverName String
+  decision     String
+  remarks      String?
+  createdAt    DateTime @default(now())
+
+  @@unique([requestId, stage])
+}
+
+// ---------------------------------------------------------------------------
+// Employees
+// ---------------------------------------------------------------------------
+
+model Employee {
+  id           String               @id @default(cuid())
+  empId        String               @unique
+  name         String
+  baseLocation String
+  active       Boolean              @default(true)
+  createdAt    DateTime             @default(now())
+  distributions DistributionRecord[]
+  importRows    ImportRow[]
+}
+
+// ---------------------------------------------------------------------------
+// Import pipeline
+// ---------------------------------------------------------------------------
+
+model ImportJob {
+  id             String       @id @default(cuid())
+  type           ImportType
+  mode           ImportMode
+  filename       String
+  checksum       String
+  idempotencyKey String       @unique
+  status         ImportStatus @default(UPLOADED)
+  totalRows      Int          @default(0)
+  validRows      Int          @default(0)
+  invalidRows    Int          @default(0)
+  duplicateRows  Int          @default(0)
+  errorSummary   String?
+  uploadedById   String
+  uploadedBy     User         @relation(fields: [uploadedById], references: [id])
+  committedById  String?      // set on commit
+  committedAt    DateTime?
+  createdAt      DateTime     @default(now())
+
+  rows             ImportRow[]
+  reconciliations  ReconciliationReview[]
+  procurements     ProcurementRecord[]
+  distributions    DistributionRecord[]
+}
+
+model ImportRow {
+  id                 String     @id @default(cuid())
+  jobId              String
+  job                ImportJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  sourceRow          Int
+  raw                Json
+  normalized         Json?      // normalized version of raw for matching
+  status             RowStatus
+  errors             Json?
+  matchedItemId      String?    // FK to Item (variant match)
+  matchedItem        Item?      @relation(fields: [matchedItemId], references: [id])
+  matchedEmployeeId  String?    // FK to Employee
+  matchedEmployee    Employee?  @relation(fields: [matchedEmployeeId], references: [id])
+
+  @@unique([jobId, sourceRow])
+  @@index([jobId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Reconciliation
+// ---------------------------------------------------------------------------
+
+model ReconciliationReview {
+  id              String               @id @default(cuid())
+  importJobId     String
+  importJob       ImportJob            @relation(fields: [importJobId], references: [id])
+  itemId          String
+  item            Item                 @relation(fields: [itemId], references: [id])
+  sourceRow       Int                  // row in import file
+  balanceBefore   Decimal              @db.Decimal(14, 3)
+  targetBalance   Decimal              @db.Decimal(14, 3)
+  variance        Decimal              @db.Decimal(14, 3)
+  procuredCheck   Decimal?             @db.Decimal(14, 3) // cross-check only
+  distributedCheck Decimal?            @db.Decimal(14, 3) // cross-check only
+  reason          String?              // required before approval
+  status          ReconciliationStatus @default(PENDING_APPROVAL)
+  requesterId     String
+  requester       User                 @relation("ReconciliationRequester", fields: [requesterId], references: [id])
+  reviewerId      String?
+  reviewer        User?                @relation("ReconciliationApprover", fields: [reviewerId], references: [id])
+  reviewedAt      DateTime?
+  movementId      String?              // FK to posted StockMovement
+  createdAt       DateTime             @default(now())
+
+  @@unique([importJobId, itemId])
+}
+
+// ---------------------------------------------------------------------------
+// Procurement records
+// ---------------------------------------------------------------------------
+
+model ProcurementRecord {
+  id            String            @id @default(cuid())
+  itemId        String
+  item          Item              @relation(fields: [itemId], references: [id])
+  importJobId   String?
+  importJob     ImportJob?        @relation(fields: [importJobId], references: [id])
+  sourceRow     Int?
+  mode          ImportMode        // HISTORICAL or NEW
+  procurementDate DateTime
+  quantity      Decimal           @db.Decimal(14, 3)
+  status        ProcurementStatus @default(PENDING)
+  movementId    String?           // set when stock-in is posted
+  sourceRef     String?           // external source reference / idempotency
+  approverId    String?
+  approver      User?             @relation("ProcurementApprover", fields: [approverId], references: [id])
+  approvedAt    DateTime?
+  reason        String?
+  createdAt     DateTime          @default(now())
+
+  @@index([itemId])
+  @@index([importJobId])
+}
+
+// ---------------------------------------------------------------------------
+// Distribution records (historical + new via import)
+// ---------------------------------------------------------------------------
+
+model DistributionRecord {
+  id               String     @id @default(cuid())
+  employeeId       String
+  employee         Employee   @relation(fields: [employeeId], references: [id])
+  itemId           String
+  item             Item       @relation(fields: [itemId], references: [id])
+  importJobId      String?
+  importJob        ImportJob? @relation(fields: [importJobId], references: [id])
+  sourceRow        Int?
+  mode             ImportMode // HISTORICAL or NEW
+  distributionDate DateTime
+  quantity         Decimal    @db.Decimal(14, 3)
+  category         String?
+  poc              String?
+  sourceStatus     String?    // status from import file (e.g. "Distributed")
+  movementId       String?    // set when stock deduction is posted
+  sourceRef        String?    // external source reference / idempotency
+  createdAt        DateTime   @default(now())
+
+  @@index([employeeId])
+  @@index([itemId])
+  @@index([importJobId])
+}
+
+// ---------------------------------------------------------------------------
+// Audit log
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  actorId       String
+  action        String
+  entity        String
+  entityId      String
+  outcome       String   @default("SUCCESS")
+  detail        Json?
+  correlationId String?  // import job ID or other correlation
+  createdAt     DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+}
