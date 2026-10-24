@@ -59,33 +59,33 @@ export default async function Dashboard() {
 
   return (
     <>
-      <h1>Dashboard</h1>
+      <div className="page-head"><div><h1>Dashboard</h1><p>Operational overview for your inventory workspace.</p></div></div>
 
       {/* Key metrics */}
       <div className="grid">
-        <Link href="/inventory" className="card">
-          <small>Active items</small>
+        <Link href="/inventory" className="card metric-link">
+          <span className="metric-label">Active items</span>
           <div className="big">{itemCount}</div>
         </Link>
-        <Link href="/inventory" className="card">
-          <small>Total stock on hand</small>
+        <Link href="/inventory" className="card metric-link">
+          <span className="metric-label">Total stock on hand</span>
           <div className="big">{totalStock.toLocaleString()}</div>
         </Link>
-        <Link href="/requests" className="card">
-          <small>Pending distribution requests</small>
+        <Link href="/requests" className="card metric-link">
+          <span className="metric-label">Pending distribution requests</span>
           <div className="big" style={pendingRequests > 0 ? { color: "var(--warn)" } : undefined}>
             {pendingRequests}
           </div>
         </Link>
-        <Link href={isApprover ? "/approvals" : "/requests"} className="card">
-          <small>{stage ? "Awaiting your approval" : "Your requests"}</small>
+        <Link href={isApprover ? "/approvals" : "/requests"} className="card metric-link">
+          <span className="metric-label">{stage ? "Awaiting your approval" : "Your requests"}</span>
           <div className="big" style={myCount > 0 ? { color: "var(--warn)" } : undefined}>
             {myCount}
           </div>
         </Link>
         {needsReview > 0 && (
           <Link href="/requests?status=NEEDS_REVIEW" className="card">
-            <small>Requests needing review</small>
+            <span className="metric-label">Requests needing review</span>
             <div className="big" style={{ color: "var(--bad)" }}>
               {needsReview}
             </div>
@@ -93,7 +93,7 @@ export default async function Dashboard() {
         )}
         {pendingReconciliations > 0 && (
           <div className="card">
-            <small>Pending reconciliation approvals</small>
+            <span className="metric-label">Pending reconciliation approvals</span>
             <div className="big" style={{ color: "var(--warn)" }}>
               {pendingReconciliations}
             </div>
@@ -101,7 +101,7 @@ export default async function Dashboard() {
         )}
         {pendingProcurements > 0 && (
           <div className="card">
-            <small>Pending procurement approvals</small>
+            <span className="metric-label">Pending procurement approvals</span>
             <div className="big" style={{ color: "var(--warn)" }}>
               {pendingProcurements}
             </div>

@@ -11,9 +11,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <aside>
         <b className="brand">Mavericks Inventory</b>
         <nav>{nav.map(([h, t]) => <Link key={h} href={h}>{t}</Link>)}</nav>
-        <form action={logout}><small>{u.name} ({u.role.toLowerCase()})</small><button className="ghost">Sign out</button></form>
+        <form action={logout}><small>{u.name} · {u.role.toLowerCase()}</small><button className="ghost">Sign out</button></form>
       </aside>
-      <main>{children}</main>
+      <main>
+        <div className="page-context"><span>Operations</span><span className="context-dot">/</span><span>Mavericks Inventory</span></div>
+        {children}
+      </main>
     </div>
   );
 }
