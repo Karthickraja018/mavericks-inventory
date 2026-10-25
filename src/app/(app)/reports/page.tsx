@@ -19,6 +19,11 @@ export default async function Reports() {
           <p>Auditable movements with source references, actors, and balances.</p>
           <Link href="/reports/ledger.csv"><button>Download CSV</button></Link>
         </div>
+        <div className="card">
+          <h2>Excel Templates & Workbooks</h2>
+          <p>Download sample spreadsheets for Stock Count, Procurement, and Recipient.</p>
+          <Link href="/imports"><button className="ghost">View & Download Templates</button></Link>
+        </div>
       </div>
     </>
   );

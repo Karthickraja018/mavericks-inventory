@@ -67,19 +67,35 @@ export function canonicalize(s: unknown): string {
 // ---------------------------------------------------------------------------
 // Streaming XLSX parser — returns all rows from the first sheet
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// XLSX parser — returns all rows from the first sheet
+// Uses workbook load with fallback to stream reader for maximum format compatibility.
+// ---------------------------------------------------------------------------
 export async function readFirstSheet(buf: Buffer) {
-  const wb = new (ExcelJS as any).stream.xlsx.WorkbookReader(Readable.from(buf), {
-    sharedStrings: "cache",
-    styles: "cache",
-    worksheets: "emit",
-    entries: "emit",
-  });
-  for await (const ws of wb) {
+  try {
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf as any);
+    const ws = wb.worksheets[0];
+    if (!ws) return [];
     const rows: { n: number; v: unknown[] }[] = [];
-    for await (const row of ws) rows.push({ n: row.number, v: (row.values as unknown[]).slice(1) });
+    ws.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+      rows.push({ n: rowNumber, v: (row.values as unknown[]).slice(1) });
+    });
     return rows;
+  } catch {
+    const wb = new (ExcelJS as any).stream.xlsx.WorkbookReader(Readable.from(buf), {
+      sharedStrings: "cache",
+      styles: "cache",
+      worksheets: "emit",
+      entries: "emit",
+    });
+    for await (const ws of wb) {
+      const rows: { n: number; v: unknown[] }[] = [];
+      for await (const row of ws) rows.push({ n: row.number, v: (row.values as unknown[]).slice(1) });
+      return rows;
+    }
+    return [];
   }
-  return [];
 }
 
 // ---------------------------------------------------------------------------
