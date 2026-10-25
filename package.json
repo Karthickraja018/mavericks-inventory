@@ -1,1 +1,31 @@
-{"name":"mavericks-inventory","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start","migrate":"prisma migrate dev","seed":"tsx prisma/seed.ts","test":"tsx --test src/lib/*.test.ts"},"dependencies":{"@neon/config":"^1.9.3","@neon/env":"^1.6.4","@prisma/client":"^5.22.0","bcryptjs":"^2.4.3","exceljs":"^4.4.0","jose":"^5.9.6","next":"14.2.18","react":"^18.3.1","react-dom":"^18.3.1"},"devDependencies":{"@types/bcryptjs":"^2.4.6","@types/node":"^20","@types/react":"^18","prisma":"^5.22.0","tsx":"^4.19.2","typescript":"^5"}}
+{
+    "name": "mavericks-inventory",
+    "private": true,
+    "scripts": {
+        "dev": "next dev",
+        "build": "prisma generate && next build",
+        "start": "next start",
+        "migrate": "prisma migrate dev",
+        "seed": "tsx prisma/seed.ts",
+        "test": "tsx --test src/lib/*.test.ts"
+    },
+    "dependencies": {
+        "@neon/config": "^1.9.3",
+        "@neon/env": "^1.6.4",
+        "@prisma/client": "^5.22.0",
+        "bcryptjs": "^2.4.3",
+        "exceljs": "^4.4.0",
+        "jose": "^5.9.6",
+        "next": "14.2.18",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1"
+    },
+    "devDependencies": {
+        "@types/bcryptjs": "^2.4.6",
+        "@types/node": "^20",
+        "@types/react": "^18",
+        "prisma": "^5.22.0",
+        "tsx": "^4.19.2",
+        "typescript": "^5"
+    }
+}
