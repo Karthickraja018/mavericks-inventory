@@ -300,3 +300,67 @@ export async function toggleUser(f: FormData) {
   revalidatePath("/users");
 }
 
+function userInput(f: FormData) {
+  const name = String(f.get("name") || "").trim();
+  const email = String(f.get("email") || "").trim().toLowerCase();
+  const role = String(f.get("role") || "");
+  const password = String(f.get("password") || "");
+  if (!name) throw new Error("Name is required.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter a valid email address.");
+  if (!["EXECUTIVE", "MANAGER", "AUTHORITY", "ADMIN"].includes(role)) throw new Error("Select a valid role.");
+  if (password && password.length < 8) throw new Error("Password must be at least 8 characters.");
+  return { name, email, role: role as "EXECUTIVE" | "MANAGER" | "AUTHORITY" | "ADMIN", password };
+}
+
+export async function createUser(f: FormData) {
+  const actor = await requireUser(["ADMIN"]);
+  try {
+    const input = userInput(f);
+    if (!input.password) throw new Error("Password is required for a new user.");
+    const created = await db.user.create({
+      data: {
+        name: input.name,
+        email: input.email,
+        role: input.role,
+        passwordHash: await bcrypt.hash(input.password, 12),
+      },
+    });
+    await audit(db, actor.id, "USER_CREATED", "User", created.id, { email: created.email, role: created.role });
+  } catch (e) {
+    redirect(`/users?error=${encodeURIComponent((e as Error).message || "Unable to create user.")}`);
+  }
+  revalidatePath("/users");
+}
+
+export async function updateUser(f: FormData) {
+  const actor = await requireUser(["ADMIN"]);
+  const id = String(f.get("id") || "");
+  try {
+    if (!id) throw new Error("User was not specified.");
+    const input = userInput(f);
+    const data: { name: string; email: string; role: typeof input.role; passwordHash?: string } = {
+      name: input.name,
+      email: input.email,
+      role: input.role,
+    };
+    if (input.password) data.passwordHash = await bcrypt.hash(input.password, 12);
+    const updated = await db.user.update({ where: { id }, data });
+    await audit(db, actor.id, "USER_UPDATED", "User", id, { email: updated.email, role: updated.role, passwordChanged: Boolean(input.password) });
+  } catch (e) {
+    redirect(`/users?error=${encodeURIComponent((e as Error).message || "Unable to update user.")}`);
+  }
+  revalidatePath("/users");
+}
+
+export async function deleteUser(f: FormData) {
+  const actor = await requireUser(["ADMIN"]);
+  const id = String(f.get("id") || "");
+  if (id === actor.id) redirect("/users?error=You cannot delete your own account.");
+  try {
+    await db.user.delete({ where: { id } });
+    await audit(db, actor.id, "USER_DELETED", "User", id);
+  } catch {
+    redirect("/users?error=This user has related business history and cannot be deleted. Deactivate the account instead.");
+  }
+  revalidatePath("/users");
+}

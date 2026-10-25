@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { toggleUser } from "../../actions";
+import { createUser, deleteUser, toggleUser, updateUser } from "../../actions";
 export const dynamic = "force-dynamic";
 
 export default async function Users({
@@ -8,7 +8,7 @@ export default async function Users({
 }: {
   searchParams: { q?: string; error?: string };
 }) {
-  await requireUser(["ADMIN"]);
+  const currentUser = await requireUser(["ADMIN"]);
   const q = searchParams.q?.trim();
   const users = await db.user.findMany({
     where: q
@@ -33,6 +33,17 @@ export default async function Users({
 
       {searchParams.error && <div className="err">{searchParams.error}</div>}
 
+      <details className="card user-create">
+        <summary><strong>Create user</strong><small>Add a new person to the workspace</small></summary>
+        <form action={createUser} className="row" style={{ marginTop: 18 }}>
+          <div><label htmlFor="new-name">Name</label><input id="new-name" name="name" required /></div>
+          <div><label htmlFor="new-email">Email</label><input id="new-email" name="email" type="email" required /></div>
+          <div><label htmlFor="new-role">Role</label><select id="new-role" name="role" defaultValue="EXECUTIVE"><option value="EXECUTIVE">Executive</option><option value="MANAGER">Manager</option><option value="AUTHORITY">Authority</option><option value="ADMIN">Admin</option></select></div>
+          <div><label htmlFor="new-password">Temporary password</label><input id="new-password" name="password" type="password" minLength={8} required /></div>
+          <button>Create user</button>
+        </form>
+      </details>
+
       <form className="card row" style={{ marginBottom: 0 }}>
         <div>
           <label htmlFor="q">Search name or email</label>
@@ -42,13 +53,6 @@ export default async function Users({
           <button className="ghost">Search</button>
         </div>
       </form>
-
-      <p>
-        <small>
-          New users must be created directly in the database or via the seed script. Password resets and
-          user creation through the UI are not implemented (no open business decision authorises it).
-        </small>
-      </p>
 
       <div className="card scroll">
         <table>
@@ -83,16 +87,22 @@ export default async function Users({
                   <small>{u.createdAt.toLocaleDateString("en-GB")}</small>
                 </td>
                 <td>
-                  <form action={toggleUser} style={{ margin: 0 }}>
-                    <input type="hidden" name="id" value={u.id} />
-                    <input type="hidden" name="active" value={u.active ? "1" : "0"} />
-                    <button
-                      className="ghost"
-                      style={{ fontSize: 12, padding: "4px 10px" }}
-                    >
-                      {u.active ? "Deactivate" : "Activate"}
-                    </button>
+                  <details>
+                    <summary className="table-action">Edit</summary>
+                    <form action={updateUser} className="user-edit-form">
+                      <input type="hidden" name="id" value={u.id} />
+                      <label>Name<input name="name" defaultValue={u.name} required /></label>
+                      <label>Email<input name="email" type="email" defaultValue={u.email} required /></label>
+                      <label>Role<select name="role" defaultValue={u.role}><option value="EXECUTIVE">Executive</option><option value="MANAGER">Manager</option><option value="AUTHORITY">Authority</option><option value="ADMIN">Admin</option></select></label>
+                      <label>New password <small>(leave blank to keep current)</small><input name="password" type="password" minLength={8} /></label>
+                      <button>Save changes</button>
+                    </form>
+                  </details>
+                  <form action={toggleUser} style={{ margin: "8px 0 0" }}>
+                    <input type="hidden" name="id" value={u.id} /><input type="hidden" name="active" value={u.active ? "1" : "0"} />
+                    <button className="ghost" style={{ fontSize: 12, padding: "4px 10px" }}>{u.active ? "Deactivate" : "Activate"}</button>
                   </form>
+                  {u.id !== currentUser.id && <form action={deleteUser} style={{ margin: "8px 0 0" }}><input type="hidden" name="id" value={u.id} /><button className="danger" style={{ fontSize: 12, padding: "4px 10px" }}>Delete</button></form>}
                 </td>
               </tr>
             ))}
