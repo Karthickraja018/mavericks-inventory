@@ -18,6 +18,7 @@ export default async function Dashboard() {
     pendingRequests,
     myCount,
     totalStock,
+    zeroStock,
     recentMoves,
     pendingReconciliations,
     pendingProcurements,
@@ -33,6 +34,7 @@ export default async function Dashboard() {
     db.item
       .aggregate({ _sum: { quantity: true }, where: { active: true } })
       .then((r) => Number(r._sum.quantity ?? 0)),
+    db.item.count({ where: { active: true, quantity: 0 } }),
     // Last 5 stock movements
     db.stockMovement.findMany({
       orderBy: { createdAt: "desc" },
@@ -59,34 +61,41 @@ export default async function Dashboard() {
 
   return (
     <>
-      <div className="page-head"><div><h1>Dashboard</h1><p>Operational overview for your inventory workspace.</p></div></div>
+      <div className="page-head">
+        <div><h1>Dashboard</h1><p>Operational overview for your inventory workspace.</p></div>
+        <small>Updated {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</small>
+      </div>
 
       {/* Key metrics */}
       <div className="grid">
         <Link href="/inventory" className="card metric-link">
-          <span className="metric-label">Active items</span>
+          <span className="metric-label">Active variants</span>
           <div className="big">{itemCount}</div>
         </Link>
         <Link href="/inventory" className="card metric-link">
           <span className="metric-label">Total stock on hand</span>
           <div className="big">{totalStock.toLocaleString()}</div>
         </Link>
+        <Link href="/inventory" className="card metric-link">
+          <span className="metric-label">Zero-stock variants</span>
+          <div className="big" style={zeroStock > 0 ? { color: "var(--warning)" } : undefined}>{zeroStock}</div>
+        </Link>
         <Link href="/requests" className="card metric-link">
           <span className="metric-label">Pending distribution requests</span>
-          <div className="big" style={pendingRequests > 0 ? { color: "var(--warn)" } : undefined}>
+          <div className="big" style={pendingRequests > 0 ? { color: "var(--warning)" } : undefined}>
             {pendingRequests}
           </div>
         </Link>
         <Link href={isApprover ? "/approvals" : "/requests"} className="card metric-link">
           <span className="metric-label">{stage ? "Awaiting your approval" : "Your requests"}</span>
-          <div className="big" style={myCount > 0 ? { color: "var(--warn)" } : undefined}>
+          <div className="big" style={myCount > 0 ? { color: "var(--warning)" } : undefined}>
             {myCount}
           </div>
         </Link>
         {needsReview > 0 && (
           <Link href="/requests?status=NEEDS_REVIEW" className="card">
             <span className="metric-label">Requests needing review</span>
-            <div className="big" style={{ color: "var(--bad)" }}>
+            <div className="big" style={{ color: "var(--danger)" }}>
               {needsReview}
             </div>
           </Link>
@@ -94,7 +103,7 @@ export default async function Dashboard() {
         {pendingReconciliations > 0 && (
           <div className="card">
             <span className="metric-label">Pending reconciliation approvals</span>
-            <div className="big" style={{ color: "var(--warn)" }}>
+            <div className="big" style={{ color: "var(--warning)" }}>
               {pendingReconciliations}
             </div>
           </div>
@@ -102,7 +111,7 @@ export default async function Dashboard() {
         {pendingProcurements > 0 && (
           <div className="card">
             <span className="metric-label">Pending procurement approvals</span>
-            <div className="big" style={{ color: "var(--warn)" }}>
+            <div className="big" style={{ color: "var(--warning)" }}>
               {pendingProcurements}
             </div>
           </div>
@@ -138,7 +147,7 @@ export default async function Dashboard() {
                     </td>
                     <td
                       style={{
-                        color: Number(m.change) >= 0 ? "var(--acc)" : "var(--bad)",
+                        color: Number(m.change) >= 0 ? "var(--success)" : "var(--danger)",
                       }}
                     >
                       {Number(m.change) >= 0 ? "+" : ""}
