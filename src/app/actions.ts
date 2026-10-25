@@ -222,3 +222,81 @@ export async function decide(f: FormData) {
   revalidatePath("/approvals");
   redirect(err ? `/approvals?error=${encodeURIComponent(err)}` : "/approvals");
 }
+
+// ---------------------------------------------------------------------------
+// NEEDS_REVIEW resolution
+// OQ-27: reviewer role, assignment and extended outcomes are OPEN.
+// Safe subset: requeue to PENDING_MANAGER (no stock effect) or reject.
+// Self-resolution is blocked server-side matching existing self-approval guard.
+// ---------------------------------------------------------------------------
+export async function resolveNeedsReview(f: FormData) {
+  const u = await requireUser(["MANAGER", "AUTHORITY"]);
+  const id = String(f.get("id"));
+  const decision = f.get("decision");
+  const remarks = String(f.get("remarks") || "").trim();
+  let err = "";
+  try {
+    if (decision !== "requeue" && decision !== "reject") throw new Error("Invalid decision.");
+    if (decision === "reject" && !remarks) throw new Error("Rejection remarks are required.");
+
+    await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Request" WHERE id = ${id} FOR UPDATE`;
+      const r = await tx.request.findUnique({ where: { id, status: "NEEDS_REVIEW" } });
+      if (!r) throw new Error("Request is not in NEEDS_REVIEW, or does not exist.");
+      if (r.requesterId === u.id) throw new Error("You cannot resolve your own request.");
+
+      if (decision === "requeue") {
+        const levels = r.levels ?? 2;
+        await tx.request.update({
+          where: { id },
+          data: { status: "PENDING_MANAGER", reviewReason: null },
+        });
+        await audit(tx as any, u.id, "REQUEST_REQUEUED", "Request", id, {
+          reviewedBy: u.id,
+          remarks: remarks || null,
+          levels,
+        });
+      } else {
+        await tx.request.update({
+          where: { id },
+          data: { status: "REJECTED" },
+        });
+        await tx.approval.create({
+          data: {
+            requestId: id,
+            stage: 99, // sentinel for review-rejection
+            approverId: u.id,
+            approverName: u.name,
+            decision: "REJECTED",
+            remarks: remarks || null,
+          },
+        });
+        await audit(tx as any, u.id, "REQUEST_REVIEW_REJECTED", "Request", id, {
+          remarks,
+        });
+      }
+    });
+  } catch (e: any) {
+    err = e.message;
+  }
+  revalidatePath("/approvals");
+  revalidatePath("/requests");
+  if (err) redirect(`/requests/${id}/review?error=${encodeURIComponent(err)}`);
+  redirect("/requests");
+}
+
+// ---------------------------------------------------------------------------
+// User management (ADMIN only)
+// ---------------------------------------------------------------------------
+export async function toggleUser(f: FormData) {
+  const u = await requireUser(["ADMIN"]);
+  const id = String(f.get("id"));
+  const active = f.get("active") === "1";
+  if (id === u.id) redirect("/users?error=You cannot deactivate your own account");
+  const updated = await db.user.updateMany({ where: { id }, data: { active: !active } });
+  if (updated.count) {
+    await audit(db, u.id, active ? "USER_DEACTIVATED" : "USER_ACTIVATED", "User", id);
+  }
+  revalidatePath("/users");
+}
+
