@@ -134,7 +134,7 @@ export default async function Inventory({
                 </td>
                 <td>
                   <Link href={`/inventory/${i.id}`} style={{ fontSize: 13, color: "var(--acc)" }}>
-                    History
+                    {u.role === "ADMIN" ? "Manage" : "History"}
                   </Link>
                 </td>
               </tr>

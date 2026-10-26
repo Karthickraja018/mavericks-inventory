@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { deleteItem, toggleItem, updateItem } from "../../../actions";
 export const dynamic = "force-dynamic";
 
 export default async function ItemHistory({
@@ -8,9 +9,9 @@ export default async function ItemHistory({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { page?: string };
+  searchParams: { page?: string; error?: string };
 }) {
-  await requireUser();
+  const u = await requireUser();
   const page = Math.max(1, Number(searchParams.page) || 1);
   const pageSize = 50;
 
@@ -38,9 +39,38 @@ export default async function ItemHistory({
 
   return (
     <>
+      {searchParams.error && <div className="err">{searchParams.error}</div>}
       <h1>
         {item.sku} · {item.name}
       </h1>
+
+      {u.role === "ADMIN" && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h2 style={{ marginTop: 0 }}>Manage item</h2>
+          <form action={updateItem} className="row">
+            <input type="hidden" name="id" value={item.id} />
+            <div><label>SKU *</label><input name="sku" defaultValue={item.sku} required /></div>
+            <div><label>Name *</label><input name="name" defaultValue={item.name} required /></div>
+            <div><label>Size / Qty attr</label><input name="size" defaultValue={item.size} /></div>
+            <div><label>Color</label><input name="color" defaultValue={item.color} /></div>
+            <div><label>Brand</label><input name="brand" defaultValue={item.brand} /></div>
+            <div><label>Category</label><input name="category" defaultValue={item.category} /></div>
+            <div><label>Unit</label><input name="unit" defaultValue={item.unit} required /></div>
+            <button>Save changes</button>
+          </form>
+          <div className="row" style={{ marginTop: 12 }}>
+            <form action={toggleItem}>
+              <input type="hidden" name="id" value={item.id} />
+              <button className="ghost">{item.active ? "Deactivate item" : "Activate item"}</button>
+            </form>
+            <form action={deleteItem}>
+              <input type="hidden" name="id" value={item.id} />
+              <button className="danger">Delete item</button>
+            </form>
+            {!item.active && <small style={{ color: "var(--mute)" }}>Inactive items are unavailable for new transactions.</small>}
+          </div>
+        </div>
+      )}
 
       {discrepancy && (
         <div className="err">

@@ -69,6 +69,82 @@ export async function createItem(f: FormData) {
   revalidatePath("/inventory");
 }
 
+function itemInput(f: FormData) {
+  const sku = String(f.get("sku") || "").trim();
+  const name = String(f.get("name") || "").trim();
+  const unit = String(f.get("unit") || "pcs").trim() || "pcs";
+  const size = String(f.get("size") || "").trim();
+  const color = String(f.get("color") || "").trim();
+  const brand = String(f.get("brand") || "").trim();
+  const category = String(f.get("category") || "General").trim() || "General";
+  if (!sku || !name) throw new Error("SKU and name are required.");
+  return { sku, name, unit, size, color, brand, category };
+}
+
+export async function updateItem(f: FormData) {
+  const u = await requireUser(["ADMIN"]);
+  const id = String(f.get("id") || "");
+  try {
+    if (!id) throw new Error("Item was not specified.");
+    const updated = await db.item.update({ where: { id }, data: itemInput(f) });
+    await audit(db, u.id, "ITEM_UPDATED", "Item", id, {
+      sku: updated.sku,
+      name: updated.name,
+      size: updated.size,
+      color: updated.color,
+      brand: updated.brand,
+      category: updated.category,
+      unit: updated.unit,
+    });
+  } catch (e) {
+    redirect(`/inventory/${id}?error=${encodeURIComponent((e as Error).message || "Unable to update item.")}`);
+  }
+  revalidatePath("/inventory");
+  revalidatePath(`/inventory/${id}`);
+  redirect(`/inventory/${id}`);
+}
+
+export async function toggleItem(f: FormData) {
+  const u = await requireUser(["ADMIN"]);
+  const id = String(f.get("id") || "");
+  try {
+    const item = await db.item.findUnique({ where: { id }, select: { active: true, sku: true } });
+    if (!item) throw new Error("Item was not found.");
+    await db.item.update({ where: { id }, data: { active: !item.active } });
+    await audit(db, u.id, item.active ? "ITEM_DEACTIVATED" : "ITEM_ACTIVATED", "Item", id, { sku: item.sku });
+  } catch (e) {
+    redirect(`/inventory/${id}?error=${encodeURIComponent((e as Error).message || "Unable to change item status.")}`);
+  }
+  revalidatePath("/inventory");
+  revalidatePath(`/inventory/${id}`);
+  redirect(`/inventory/${id}`);
+}
+
+export async function deleteItem(f: FormData) {
+  const u = await requireUser(["ADMIN"]);
+  const id = String(f.get("id") || "");
+  try {
+    const item = await db.item.findUnique({ where: { id }, select: { sku: true } });
+    if (!item) throw new Error("Item was not found.");
+    const [moves, lines, recons, procurements, distributions, rows] = await Promise.all([
+      db.stockMovement.count({ where: { itemId: id } }),
+      db.requestLine.count({ where: { itemId: id } }),
+      db.reconciliationReview.count({ where: { itemId: id } }),
+      db.procurementRecord.count({ where: { itemId: id } }),
+      db.distributionRecord.count({ where: { itemId: id } }),
+      db.importRow.count({ where: { matchedItemId: id } }),
+    ]);
+    if (moves || lines || recons || procurements || distributions || rows)
+      throw new Error("This item has operational history and cannot be deleted. Deactivate it instead.");
+    await db.item.delete({ where: { id } });
+    await audit(db, u.id, "ITEM_DELETED", "Item", id, { sku: item.sku });
+  } catch (e) {
+    redirect(`/inventory/${id}?error=${encodeURIComponent((e as Error).message || "Unable to delete item.")}`);
+  }
+  revalidatePath("/inventory");
+  redirect("/inventory");
+}
+
 // ---------------------------------------------------------------------------
 // Requests (distribution)
 // ---------------------------------------------------------------------------
