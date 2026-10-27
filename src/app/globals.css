@@ -110,9 +110,9 @@ small {
 
 /* Shell Layout */
 .shell {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
+  display: flex;
   min-height: 100vh;
+  width: 100%;
 }
 
 aside {
@@ -582,6 +582,42 @@ label {
   border-color: var(--line-strong);
   background: var(--surface-subtle);
   color: var(--muted);
+}
+
+.status-success {
+  background: var(--success-soft) !important;
+  border: 1px solid var(--success-border) !important;
+  color: var(--success-dark) !important;
+}
+
+.status-warning {
+  background: var(--warning-soft) !important;
+  border: 1px solid var(--warning-border) !important;
+  color: var(--warning-dark) !important;
+}
+
+.status-danger {
+  background: var(--danger-soft) !important;
+  border: 1px solid var(--danger-border) !important;
+  color: var(--danger-dark) !important;
+}
+
+.status-accent {
+  background: var(--accent-soft) !important;
+  border: 1px solid var(--accent-border) !important;
+  color: var(--accent-dark) !important;
+}
+
+.status-info {
+  background: #f0f9ff !important;
+  border: 1px solid #bae6fd !important;
+  color: #0369a1 !important;
+}
+
+.status-neutral {
+  background: var(--surface-subtle) !important;
+  border: 1px solid var(--line) !important;
+  color: var(--muted) !important;
 }
 
 /* Notifications & Alerts */

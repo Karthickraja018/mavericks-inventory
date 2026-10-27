@@ -1,25 +1,57 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { createRequest } from "../../../actions";
+import { PageHeader } from "@/components/ui/page-header";
+import { RequestForm } from "./request-form";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+
 export const dynamic = "force-dynamic";
-export default async function NewRequest({ searchParams }: { searchParams: { error?: string } }) {
-  await requireUser(["EXECUTIVE"]);
-  const items = await db.item.findMany({ where: { active: true }, orderBy: { name: "asc" } });
+
+export default async function NewRequestPage({
+  searchParams,
+}: {
+  searchParams: { error?: string };
+}) {
+  await requireUser(["EXECUTIVE", "ADMIN"]);
+
+  const itemsRaw = await db.item.findMany({
+    where: { active: true },
+    orderBy: { name: "asc" },
+  });
+
+  const items = itemsRaw.map((it) => ({
+    id: it.id,
+    sku: it.sku,
+    name: it.name,
+    size: it.size,
+    color: it.color,
+    brand: it.brand,
+    unit: it.unit,
+    quantity: Number(it.quantity),
+  }));
+
   return (
-    <>
-      <h1>New distribution request</h1>
+    <div style={{ maxWidth: 860, margin: "0 auto" }}>
+      <PageHeader
+        title="New Distribution Request"
+        description="Create an internal item requisition. Multi-stage approvals ensure inventory availability and managerial oversight."
+        breadcrumbs={[
+          { label: "Workspace", href: "/" },
+          { label: "Distribution Requests", href: "/requests" },
+          { label: "New Request" },
+        ]}
+        actions={
+          <Link href="/requests">
+            <button className="ghost" style={{ minHeight: 34, fontSize: 13 }}>
+              <ArrowLeft size={14} /> Back to Requests
+            </button>
+          </Link>
+        }
+      />
+
       {searchParams.error && <div className="err">{searchParams.error}</div>}
-      <form action={createRequest} className="card">
-        <label htmlFor="purpose">Purpose</label><input id="purpose" name="purpose" />
-        <h2>Items</h2>
-        {[0, 1, 2, 3, 4].map((i) => (
-          <div className="row" key={i} style={{ marginBottom: 10 }}>
-            <select name={`item${i}`} aria-label={`Item ${i + 1}`} defaultValue=""><option value="">Select item</option>{items.map((x) => <option key={x.id} value={x.id}>{x.sku} · {x.name} ({String(x.quantity)} {x.unit})</option>)}</select>
-            <input name={`qty${i}`} type="number" min="0" step="any" placeholder="Quantity" aria-label={`Quantity ${i + 1}`} />
-          </div>
-        ))}
-        <div className="row"><button name="intent" value="draft" className="ghost">Save draft</button><button name="intent" value="submit">Submit for approval</button></div>
-      </form>
-    </>
+
+      <RequestForm items={items} />
+    </div>
   );
 }

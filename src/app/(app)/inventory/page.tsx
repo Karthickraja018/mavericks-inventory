@@ -1,157 +1,108 @@
-import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { createItem } from "../../actions";
+import { PageHeader } from "@/components/ui/page-header";
+import { KpiCard } from "@/components/ui/kpi-card";
+import { InventoryView } from "./inventory-view";
+import { Boxes, CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
+
 export const dynamic = "force-dynamic";
 
-export default async function Inventory({
+export default async function InventoryPage({
   searchParams,
 }: {
-  searchParams: { q?: string; error?: string; inactive?: string };
+  searchParams: { q?: string; error?: string; stock?: string };
 }) {
   const u = await requireUser();
-  const q = searchParams.q?.trim();
-  const showInactive = searchParams.inactive === "1";
 
-  const activeFilter = showInactive ? {} : { active: true };
-  const items = await db.item.findMany({
-    where: q
-      ? {
-          ...activeFilter,
-          OR: [
-            { sku: { contains: q, mode: "insensitive" } },
-            { name: { contains: q, mode: "insensitive" } },
-            { size: { contains: q, mode: "insensitive" } },
-            { color: { contains: q, mode: "insensitive" } },
-            { brand: { contains: q, mode: "insensitive" } },
-          ],
-        }
-      : activeFilter,
-    include: { product: { select: { name: true } } },
-    orderBy: { sku: "asc" },
-    take: 200,
-  });
+  const [itemsRaw, categoriesGroup, stockAgg] = await Promise.all([
+    db.item.findMany({
+      orderBy: { sku: "asc" },
+      take: 500,
+    }),
+    db.item.findMany({
+      select: { category: true },
+      distinct: ["category"],
+      where: { active: true },
+    }),
+    db.item.aggregate({
+      _sum: { quantity: true },
+      where: { active: true },
+    }),
+  ]);
+
+  const items = itemsRaw.map((i) => ({
+    id: i.id,
+    sku: i.sku,
+    name: i.name,
+    size: i.size,
+    color: i.color,
+    brand: i.brand,
+    category: i.category,
+    unit: i.unit,
+    quantity: Number(i.quantity),
+    active: i.active,
+  }));
+
+  const totalVariants = items.length;
+  const inStockCount = items.filter((i) => i.active && i.quantity > 10).length;
+  const lowStockCount = items.filter((i) => i.active && i.quantity > 0 && i.quantity <= 10).length;
+  const zeroStockCount = items.filter((i) => i.active && i.quantity <= 0).length;
+  const totalUnits = Number(stockAgg._sum.quantity ?? 0);
+
+  const categories = categoriesGroup.map((c) => c.category).filter(Boolean);
 
   return (
     <>
-      <h1>Inventory</h1>
+      <PageHeader
+        title="Inventory"
+        description="Master catalog of product variants, live on-hand quantities, and ledger-backed movement tracking."
+        breadcrumbs={[
+          { label: "Workspace", href: "/" },
+          { label: "Inventory" },
+        ]}
+      />
+
       {searchParams.error && <div className="err">{searchParams.error}</div>}
 
-      {/* Search */}
-      <form className="card row">
-        <div>
-          <label htmlFor="q">Search SKU, name, size, color or brand</label>
-          <input id="q" name="q" defaultValue={q} />
-        </div>
-        <div style={{ flex: 0, display: "flex", alignItems: "end", gap: 8 }}>
-          <label style={{ display: "flex", gap: 6, cursor: "pointer", fontSize: 13, color: "var(--mute)", alignItems: "center" }}>
-            <input
-              type="checkbox"
-              name="inactive"
-              value="1"
-              defaultChecked={showInactive}
-              style={{ width: "auto" }}
-            />
-            Show inactive
-          </label>
-          <button className="ghost">Search</button>
-        </div>
-      </form>
-
-      {/* Admin: add item */}
-      {u.role === "ADMIN" && (
-        <form action={createItem} className="card row">
-          <div>
-            <label>SKU *</label>
-            <input name="sku" required />
-          </div>
-          <div>
-            <label>Name *</label>
-            <input name="name" required />
-          </div>
-          <div>
-            <label>Size / Qty attr</label>
-            <input name="size" placeholder="e.g. L, XL, N/A" />
-          </div>
-          <div>
-            <label>Color</label>
-            <input name="color" placeholder="e.g. Black, N/A" />
-          </div>
-          <div>
-            <label>Brand</label>
-            <input name="brand" placeholder="e.g. Nike, N/A" />
-          </div>
-          <div>
-            <label>Unit</label>
-            <input name="unit" defaultValue="pcs" />
-          </div>
-          <button>Add item</button>
-        </form>
-      )}
-
-      {/* Item list */}
-      <div className="card scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>SKU</th>
-              <th>Name</th>
-              <th>Size</th>
-              <th>Color</th>
-              <th>Brand</th>
-              <th>Unit</th>
-              <th style={{ textAlign: "right" }}>On hand</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((i) => (
-              <tr key={i.id} style={i.active ? undefined : { opacity: 0.5 }}>
-                <td>
-                  <code style={{ fontSize: 12 }}>{i.sku}</code>
-                </td>
-                <td>{i.name}</td>
-                <td>{i.size || <span style={{ color: "var(--mute)" }}>—</span>}</td>
-                <td>{i.color || <span style={{ color: "var(--mute)" }}>—</span>}</td>
-                <td>{i.brand || <span style={{ color: "var(--mute)" }}>—</span>}</td>
-                <td>{i.unit}</td>
-                <td style={{ textAlign: "right", fontWeight: 600 }}>
-                  <span
-                    style={
-                      Number(i.quantity) === 0 ? { color: "var(--mute)" } : undefined
-                    }
-                  >
-                    {String(i.quantity)}
-                  </span>
-                </td>
-                <td>
-                  {i.active ? (
-                    <span className="badge APPROVED">active</span>
-                  ) : (
-                    <span className="badge REJECTED">inactive</span>
-                  )}
-                </td>
-                <td>
-                  <Link href={`/inventory/${i.id}`} style={{ fontSize: 13, color: "var(--acc)" }}>
-                    {u.role === "ADMIN" ? "Manage" : "History"}
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!items.length && (
-          <div className="empty">
-            No items match.{u.role === "ADMIN" ? " Admins can add items above." : ""}
-          </div>
-        )}
-        {items.length === 200 && (
-          <div style={{ padding: "10px 0", color: "var(--mute)", fontSize: 13 }}>
-            Showing first 200 results. Use search to narrow down.
-          </div>
-        )}
+      {/* KPI Cards Grid */}
+      <div className="grid" style={{ marginBottom: 16 }}>
+        <KpiCard
+          label="Active Variants"
+          value={totalVariants}
+          subtext={`${totalUnits.toLocaleString()} total units on hand`}
+          icon={Boxes}
+        />
+        <KpiCard
+          label="In Stock (&gt;10 units)"
+          value={inStockCount}
+          subtext="Healthy inventory levels"
+          variant="success"
+          icon={CheckCircle2}
+        />
+        <KpiCard
+          label="Low Stock (1-10 units)"
+          value={lowStockCount}
+          subtext="Reorder / replenishment required"
+          variant={lowStockCount > 0 ? "warning" : "default"}
+          icon={AlertTriangle}
+        />
+        <KpiCard
+          label="Out of Stock (0 units)"
+          value={zeroStockCount}
+          subtext="Zero available units"
+          variant={zeroStockCount > 0 ? "danger" : "default"}
+          icon={XCircle}
+        />
       </div>
+
+      {/* Main Interactive Inventory Workspace */}
+      <InventoryView
+        items={items}
+        userRole={u.role}
+        categories={categories}
+        initialQuery={searchParams.q}
+        initialStockFilter={searchParams.stock}
+      />
     </>
   );
 }

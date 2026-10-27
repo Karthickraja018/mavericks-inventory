@@ -1,5 +1,24 @@
+import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { PageHeader } from "@/components/ui/page-header";
+import { KpiCard } from "@/components/ui/kpi-card";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { 
+  ShieldAlert, 
+  Search, 
+  Filter, 
+  CheckCircle2, 
+  AlertTriangle, 
+  User, 
+  Layers, 
+  Clock, 
+  Calendar,
+  FileSpreadsheet,
+  Activity
+} from "lucide-react";
+
 export const dynamic = "force-dynamic";
 
 export default async function Audit({
@@ -37,7 +56,7 @@ export default async function Audit({
     }
   }
 
-  const [logs, total] = await Promise.all([
+  const [logs, total, successCount, failureCount, distinctActorsCount] = await Promise.all([
     db.auditLog.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -45,6 +64,9 @@ export default async function Audit({
       take: pageSize,
     }),
     db.auditLog.count({ where }),
+    db.auditLog.count({ where: { outcome: "SUCCESS" } }),
+    db.auditLog.count({ where: { outcome: { in: ["FAILURE", "BLOCKED"] } } }),
+    db.user.count({ where: { active: true } }),
   ]);
 
   // Resolve actor names from logged actorIds
@@ -60,7 +82,7 @@ export default async function Audit({
 
   const pages = Math.ceil(total / pageSize);
 
-  const ENTITIES = ["User", "Item", "Request", "ImportJob", "ImportRow", "StockMovement"];
+  const ENTITIES = ["User", "Item", "Request", "ImportJob", "ImportRow", "StockMovement", "Event"];
   const OUTCOMES = ["SUCCESS", "FAILURE", "BLOCKED"];
 
   // Build query string helper
@@ -73,114 +95,265 @@ export default async function Audit({
   };
 
   return (
-    <>
-      <div className="page-head">
-        <div>
-          <h1>Audit log</h1>
-          <p>Immutable record of all system actions. {total.toLocaleString()} entries total.</p>
-        </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <PageHeader
+        title="Audit Log"
+        description="Immutable append-only record of all administrative, inventory, and authorization events across the platform."
+        breadcrumbs={[
+          { label: "Governance" },
+          { label: "Audit Log" },
+        ]}
+        actions={
+          <div style={{ display: "flex", gap: 10 }}>
+            <Link href="/reports?tab=ledger" className="btn secondary" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <FileSpreadsheet size={15} /> Export Reports
+            </Link>
+          </div>
+        }
+      />
+
+      {/* KPI Overview */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+        <KpiCard
+          label="Total Logged Events"
+          value={total.toLocaleString()}
+          subtext="Audited system actions"
+          icon={<ShieldAlert size={18} />}
+        />
+        <KpiCard
+          label="Successful Actions"
+          value={successCount.toLocaleString()}
+          subtext="Completed authorizations"
+          variant="success"
+          icon={<CheckCircle2 size={18} />}
+        />
+        <KpiCard
+          label="Blocked / Failures"
+          value={failureCount.toLocaleString()}
+          subtext="Unauthorized or rejected"
+          variant={failureCount > 0 ? "danger" : "default"}
+          icon={<AlertTriangle size={18} />}
+        />
+        <KpiCard
+          label="Active Workspace Users"
+          value={distinctActorsCount.toLocaleString()}
+          subtext="Authorized personnel"
+          icon={<User size={18} />}
+        />
       </div>
 
-      {/* Filters */}
-      <form className="card row" style={{ marginBottom: 16 }}>
-        <div>
-          <label htmlFor="actor">Actor (name or ID)</label>
-          <input id="actor" name="actor" defaultValue={actorFilter} placeholder="e.g. Alice" />
+      {/* Filters Form */}
+      <form 
+        className="card" 
+        style={{ 
+          display: "flex", 
+          flexWrap: "wrap", 
+          gap: 14, 
+          padding: "16px 20px", 
+          alignItems: "flex-end",
+          background: "var(--surface)"
+        }}
+      >
+        <div style={{ flex: "1 1 180px" }}>
+          <label htmlFor="actor" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--foreground-muted)", marginBottom: 6 }}>
+            <User size={14} /> Actor (Name or ID)
+          </label>
+          <input id="actor" name="actor" defaultValue={actorFilter} placeholder="e.g. Alice" style={{ width: "100%" }} />
         </div>
-        <div>
-          <label htmlFor="entity">Entity type</label>
-          <select id="entity" name="entity" defaultValue={entityFilter ?? ""}>
+
+        <div style={{ flex: "1 1 180px" }}>
+          <label htmlFor="entity" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--foreground-muted)", marginBottom: 6 }}>
+            <Layers size={14} /> Entity Type
+          </label>
+          <select id="entity" name="entity" defaultValue={entityFilter ?? ""} style={{ width: "100%" }}>
             <option value="">All entities</option>
             {ENTITIES.map((e) => <option key={e} value={e}>{e}</option>)}
           </select>
         </div>
-        <div>
-          <label htmlFor="action">Action contains</label>
-          <input id="action" name="action" defaultValue={actionFilter} placeholder="e.g. APPROVED" />
+
+        <div style={{ flex: "1 1 180px" }}>
+          <label htmlFor="action" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--foreground-muted)", marginBottom: 6 }}>
+            <Activity size={14} /> Action Keyword
+          </label>
+          <input id="action" name="action" defaultValue={actionFilter} placeholder="e.g. APPROVED" style={{ width: "100%" }} />
         </div>
-        <div>
-          <label htmlFor="outcome">Outcome</label>
-          <select id="outcome" name="outcome" defaultValue={outcomeFilter ?? ""}>
+
+        <div style={{ flex: "1 1 160px" }}>
+          <label htmlFor="outcome" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "var(--foreground-muted)", marginBottom: 6 }}>
+            <Filter size={14} /> Outcome
+          </label>
+          <select id="outcome" name="outcome" defaultValue={outcomeFilter ?? ""} style={{ width: "100%" }}>
             <option value="">All outcomes</option>
             {OUTCOMES.map((o) => <option key={o} value={o}>{o.toLowerCase()}</option>)}
           </select>
         </div>
-        <div style={{ flex: 0, display: "flex", alignItems: "end", gap: 8 }}>
-          <button className="ghost">Filter</button>
-          <a href="/audit"><button type="button" className="ghost">Clear</button></a>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="submit" className="btn primary" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <Filter size={14} /> Apply Filter
+          </button>
+          {(actorFilter || entityFilter || actionFilter || outcomeFilter) && (
+            <Link href="/audit" className="btn secondary">
+              Clear
+            </Link>
+          )}
         </div>
       </form>
 
-      <div className="card scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Time (UTC)</th>
-              <th>Actor</th>
-              <th>Action</th>
-              <th>Entity</th>
-              <th>Entity ID</th>
-              <th>Outcome</th>
-              <th>Correlation</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.map((l) => (
-              <tr key={l.id}>
-                <td>
-                  <small>{l.createdAt.toISOString().replace("T", " ").slice(0, 19)}</small>
-                </td>
-                <td>
-                  <small>{actorMap.get(l.actorId) ?? <code style={{ fontSize: 11 }}>{l.actorId.slice(-8)}</code>}</small>
-                </td>
-                <td>
-                  <code style={{ fontSize: 11 }}>{l.action}</code>
-                </td>
-                <td>
-                  <small>{l.entity}</small>
-                </td>
-                <td>
-                  <code style={{ fontSize: 11 }}>…{l.entityId.slice(-8)}</code>
-                </td>
-                <td>
-                  <span
-                    className={`badge ${l.outcome === "SUCCESS" ? "APPROVED" : l.outcome === "FAILURE" ? "REJECTED" : ""}`}
-                  >
-                    {l.outcome.toLowerCase()}
-                  </span>
-                </td>
-                <td>
-                  {l.correlationId ? (
-                    <code style={{ fontSize: 11 }}>…{l.correlationId.slice(-8)}</code>
-                  ) : (
-                    <span style={{ color: "var(--faint)" }}>—</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!logs.length && <div className="empty">No audit log entries match the current filters.</div>}
-      </div>
-
-      {/* Pagination */}
-      {pages > 1 && (
-        <div className="row" style={{ justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-          {page > 1 && (
-            <a href={`/audit${qs({ page: String(page - 1) })}`}>
-              <button className="ghost">← Previous</button>
-            </a>
-          )}
-          <span style={{ color: "var(--muted)", alignSelf: "center", fontSize: 13 }}>
-            Page {page} of {pages} · {total.toLocaleString()} entries
-          </span>
-          {page < pages && (
-            <a href={`/audit${qs({ page: String(page + 1) })}`}>
-              <button className="ghost">Next →</button>
-            </a>
-          )}
+      {/* Audit Log Table */}
+      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border-subtle)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--foreground)" }}>
+            Audit History ({total.toLocaleString()} events)
+          </div>
+          <div style={{ fontSize: 12, color: "var(--foreground-subtle)" }}>
+            Showing page {page} of {Math.max(1, pages)}
+          </div>
         </div>
-      )}
-    </>
+
+        <div className="table-container" style={{ margin: 0, border: "none" }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp (UTC)</th>
+                <th>Actor</th>
+                <th>Action</th>
+                <th>Target Entity</th>
+                <th>Entity Reference</th>
+                <th>Outcome</th>
+                <th>Correlation Ref</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map((l) => (
+                <tr key={l.id}>
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 500 }}>
+                      <Calendar size={13} style={{ color: "var(--foreground-subtle)" }} />
+                      {l.createdAt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--foreground-subtle)", marginTop: 2 }}>
+                      {l.createdAt.toISOString().slice(11, 19)} UTC
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div 
+                        style={{ 
+                          width: 26, 
+                          height: 26, 
+                          borderRadius: "50%", 
+                          background: "var(--primary-subtle)", 
+                          color: "var(--primary)", 
+                          display: "flex", 
+                          alignItems: "center", 
+                          justifyContent: "center",
+                          fontSize: 11,
+                          fontWeight: 700 
+                        }}
+                      >
+                        {(actorMap.get(l.actorId) || "U").charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--foreground)" }}>
+                        {actorMap.get(l.actorId) ?? <code style={{ fontSize: 11 }}>{l.actorId.slice(-8)}</code>}
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <code style={{ fontSize: 12, padding: "2px 6px", background: "var(--background-subtle)", borderRadius: 4, fontWeight: 600 }}>
+                      {l.action}
+                    </code>
+                  </td>
+                  <td>
+                    <span 
+                      style={{ 
+                        display: "inline-flex", 
+                        padding: "2px 8px", 
+                        borderRadius: 4, 
+                        fontSize: 11, 
+                        fontWeight: 600,
+                        background: "var(--surface-subtle)",
+                        border: "1px solid var(--border-subtle)",
+                        color: "var(--foreground-muted)"
+                      }}
+                    >
+                      {l.entity}
+                    </span>
+                  </td>
+                  <td>
+                    <code style={{ fontSize: 11, color: "var(--foreground-subtle)" }}>
+                      …{l.entityId.slice(-8)}
+                    </code>
+                  </td>
+                  <td>
+                    <StatusBadge status={l.outcome === "SUCCESS" ? "APPROVED" : l.outcome === "FAILURE" ? "REJECTED" : "PENDING"} />
+                  </td>
+                  <td>
+                    {l.correlationId ? (
+                      <code style={{ fontSize: 11, color: "var(--foreground-subtle)" }}>
+                        …{l.correlationId.slice(-8)}
+                      </code>
+                    ) : (
+                      <span style={{ color: "var(--foreground-subtle)" }}>—</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {!logs.length && (
+          <EmptyState
+            icon={<ShieldAlert size={32} />}
+            title="No audit log entries found"
+            description="No audit logs matched the specified filter criteria. Try adjusting or clearing your filters."
+            action={
+              (actorFilter || entityFilter || actionFilter || outcomeFilter) ? (
+                <Link href="/audit" className="btn secondary">
+                  Clear Filters
+                </Link>
+              ) : undefined
+            }
+          />
+        )}
+
+        {/* Pagination Bar */}
+        {pages > 1 && (
+          <div 
+            style={{ 
+              display: "flex", 
+              justifyContent: "space-between", 
+              alignItems: "center", 
+              padding: "12px 20px", 
+              borderTop: "1px solid var(--border-subtle)" 
+            }}
+          >
+            <div style={{ fontSize: 13, color: "var(--foreground-subtle)" }}>
+              Page {page} of {pages} ({total.toLocaleString()} total entries)
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {page > 1 && (
+                <Link
+                  href={`/audit${qs({ page: String(page - 1) })}`}
+                  className="btn secondary"
+                >
+                  ← Previous
+                </Link>
+              )}
+              {page < pages && (
+                <Link
+                  href={`/audit${qs({ page: String(page + 1) })}`}
+                  className="btn secondary"
+                >
+                  Next →
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
+
