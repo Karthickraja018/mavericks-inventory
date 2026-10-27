@@ -54,7 +54,32 @@ export function GlobalHeader({
 
   // Compute breadcrumbs
   const pathParts = pathname.split("/").filter(Boolean);
-  const currentTitle = ROUTE_NAMES[pathname] || pathParts[pathParts.length - 1] || "Overview";
+  const crumbs: { label: string; href?: string }[] = [{ label: "Mavericks", href: "/" }];
+
+  if (pathParts.length === 0) {
+    crumbs.push({ label: "Overview" });
+  } else {
+    const rootPath = `/${pathParts[0]}`;
+    const rootLabel = ROUTE_NAMES[rootPath] || pathParts[0].charAt(0).toUpperCase() + pathParts[0].slice(1);
+    if (pathParts.length === 1) {
+      crumbs.push({ label: rootLabel });
+    } else {
+      crumbs.push({ label: rootLabel, href: rootPath });
+      if (pathParts[0] === "events" && pathParts[1]) {
+        crumbs.push({ label: "Event Details" });
+      } else if (pathParts[0] === "inventory" && pathParts[1]) {
+        crumbs.push({ label: "Item Details" });
+      } else if (pathParts[0] === "requests" && pathParts[1] === "new") {
+        crumbs.push({ label: "New Request" });
+      } else if (pathParts[0] === "requests" && pathParts[1]) {
+        crumbs.push({ label: "Request Review" });
+      } else if (pathParts[0] === "imports" && pathParts[1]) {
+        crumbs.push({ label: "Import Details" });
+      } else {
+        crumbs.push({ label: ROUTE_NAMES[pathname] || pathParts[pathParts.length - 1] });
+      }
+    }
+  }
 
   const totalActionable = pendingApprovalsCount + needsReviewCount;
 
@@ -74,11 +99,26 @@ export function GlobalHeader({
       }}
     >
       {/* Left: Breadcrumbs / Page Identity */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-        <span style={{ color: "var(--muted)", fontWeight: 500 }}>Mavericks</span>
-        <ChevronRight size={14} style={{ color: "var(--line-strong)" }} />
-        <span style={{ color: "var(--ink)", fontWeight: 650 }}>{currentTitle}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+        {crumbs.map((crumb, idx) => {
+          const isLast = idx === crumbs.length - 1;
+          return (
+            <React.Fragment key={idx}>
+              {crumb.href && !isLast ? (
+                <Link href={crumb.href} style={{ color: "var(--muted)", textDecoration: "none" }}>
+                  <span style={{ transition: "color .15s" }}>{crumb.label}</span>
+                </Link>
+              ) : (
+                <span style={{ color: isLast ? "var(--ink)" : "var(--muted)", fontWeight: isLast ? 650 : 500 }}>
+                  {crumb.label}
+                </span>
+              )}
+              {!isLast && <ChevronRight size={13} style={{ color: "var(--line-strong)", flexShrink: 0 }} />}
+            </React.Fragment>
+          );
+        })}
       </div>
+
 
       {/* Right Controls */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>

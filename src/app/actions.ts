@@ -240,6 +240,11 @@ export async function decide(f: FormData) {
 
       if (!approve) {
         await tx.request.update({ where: { id }, data: { status: "REJECTED" } });
+        // Mark linked distribution records as REJECTED so they never deduct stock or inflate totals
+        await tx.distributionRecord.updateMany({
+          where: { sourceRef: id, status: { in: ["PENDING_APPROVAL", "DRAFT"] } },
+          data: { status: "REJECTED" },
+        });
       } else if (stage < r.levels) {
         await tx.request.update({ where: { id }, data: { status: "PENDING_AUTHORITY" } });
       } else {
@@ -256,7 +261,7 @@ export async function decide(f: FormData) {
             insufficientLines.push(l.itemName);
             continue;
           }
-          await tx.stockMovement.create({
+          const move = await tx.stockMovement.create({
             data: {
               itemId: l.itemId,
               change: `-${q}`,
@@ -270,6 +275,12 @@ export async function decide(f: FormData) {
               approvedById: u.id,
               approvedAt: new Date(),
             },
+          });
+
+          // Link posted stock movement to corresponding DistributionRecord if linked to this request
+          await tx.distributionRecord.updateMany({
+            where: { sourceRef: id, itemId: l.itemId, status: "PENDING_APPROVAL" },
+            data: { status: "POSTED", movementId: move.id },
           });
         }
 

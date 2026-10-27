@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { PageHeader } from "@/components/ui/page-header";
 import { createEmployee, toggleEmployee, updateEmployee, importEmployeesExcel } from "./actions";
 import { EmployeeLookupView, EmployeeDetail } from "./employee-lookup-view";
 
@@ -138,26 +139,24 @@ export default async function EmployeesPage({
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>Employees & Items Collected</h1>
-          <p>
-            Track employees, manage rosters via Excel sheet import, and monitor the exact count of items and goodies collected by each employee.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <a href="/api/employees/template" download>
-            <button className="ghost" type="button" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span>📥</span> Download Excel Template
-            </button>
-          </a>
-          <Link href="/events">
-            <button type="button" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span>🎁</span> Distribute Goodies
-            </button>
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="Employees & Items Collected"
+        description="Track staff members, manage rosters via Excel sheet import, and monitor authoritative counts of items and goodies collected by each employee."
+        actions={
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <a href="/api/employees/template" download>
+              <button className="ghost" type="button" style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 34, fontSize: 13 }}>
+                <span>📥</span> Download Excel Template
+              </button>
+            </a>
+            <Link href="/events">
+              <button type="button" style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 34, fontSize: 13 }}>
+                <span>🎁</span> Distribute Goodies
+              </button>
+            </Link>
+          </div>
+        }
+      />
 
       {searchParams.error && <div className="err">{searchParams.error}</div>}
       {searchParams.success && <div className="ok">{searchParams.success}</div>}

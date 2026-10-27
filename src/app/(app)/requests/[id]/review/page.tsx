@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { PageHeader } from "@/components/ui/page-header";
 import { resolveNeedsReview } from "../../../../actions";
 export const dynamic = "force-dynamic";
 
@@ -49,12 +50,10 @@ export default async function ReviewPage({
 
   return (
     <>
-      <div className="page-head">
-        <div>
-          <h1>Review: REQ-{String(request.number).padStart(5, "0")}</h1>
-          <p>This request requires review before it can proceed or be closed.</p>
-        </div>
-      </div>
+      <PageHeader
+        title={`Review: REQ-${String(request.number).padStart(5, "0")}`}
+        description="This request requires review before it can proceed or be closed."
+      />
 
       {searchParams.error && <div className="err">{searchParams.error}</div>}
 

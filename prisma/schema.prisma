@@ -190,9 +190,16 @@ model Request {
   // Import link (for RECIPIENT:NEW import-created requests)
   importJobId    String?
 
+  // Event & recipient links (for Event Goodies requests)
+  eventId        String?
+  event          Event?    @relation(fields: [eventId], references: [id])
+  employeeId     String?
+  employee       Employee? @relation(fields: [employeeId], references: [id])
+
   lines          RequestLine[]
   approvals      Approval[]
 }
+
 
 model RequestLine {
   id        String  @id @default(cuid())
@@ -233,6 +240,7 @@ model Employee {
   active        Boolean              @default(true)
   createdAt     DateTime             @default(now())
   distributions DistributionRecord[]
+  requests      Request[]
   importRows    ImportRow[]
 }
 
@@ -358,6 +366,7 @@ model Event {
   createdAt     DateTime             @default(now())
 
   distributions DistributionRecord[]
+  requests      Request[]
 }
 
 model DistributionRecord {
@@ -376,12 +385,14 @@ model DistributionRecord {
   mode             ImportMode // HISTORICAL or NEW
   distributionDate DateTime
   quantity         Decimal    @db.Decimal(14, 3)
+  status           String     @default("POSTED") // POSTED, PENDING_APPROVAL, DRAFT, REJECTED
   category         String?
   poc              String?
   sourceStatus     String?    // status from import file (e.g. "Distributed")
   movementId       String?    // set when stock deduction is posted
   sourceRef        String?    // external source reference / idempotency
   createdAt        DateTime   @default(now())
+
 
   @@index([employeeId])
   @@index([itemId])

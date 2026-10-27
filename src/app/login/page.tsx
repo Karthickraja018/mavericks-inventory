@@ -19,7 +19,7 @@ export default function Login({ searchParams }: { searchParams: { error?: string
           width: "100%",
           maxWidth: 440,
           background: "var(--surface)",
-          border: "1px solid var(--border-subtle)",
+          border: "1px solid var(--line)",
           borderRadius: 12,
           boxShadow: "0 20px 40px -15px rgba(0, 0, 0, 0.08), 0 0 1px 1px rgba(0, 0, 0, 0.02)",
           padding: "36px 32px",
@@ -32,7 +32,7 @@ export default function Login({ searchParams }: { searchParams: { error?: string
               width: 44,
               height: 44,
               borderRadius: 10,
-              background: "linear-gradient(135deg, var(--primary) 0%, #1e40af 100%)",
+              background: "linear-gradient(135deg, var(--accent) 0%, #1e40af 100%)",
               color: "#fff",
               display: "inline-flex",
               alignItems: "center",
@@ -43,10 +43,10 @@ export default function Login({ searchParams }: { searchParams: { error?: string
           >
             <Package size={22} />
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--foreground)", letterSpacing: "-0.02em", margin: 0 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)", letterSpacing: "-0.02em", margin: 0 }}>
             Mavericks Inventory
           </h1>
-          <p style={{ fontSize: 13, color: "var(--foreground-muted)", marginTop: 6, marginBottom: 0 }}>
+          <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 6, marginBottom: 0 }}>
             Enterprise Stock Ledger, Corporate Goodies & Distribution
           </p>
         </div>
@@ -60,18 +60,17 @@ export default function Login({ searchParams }: { searchParams: { error?: string
             marginTop: 24,
             textAlign: "center",
             fontSize: 11,
-            color: "var(--foreground-subtle)",
+            color: "var(--muted)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             gap: 6,
           }}
         >
-          <ShieldCheck size={14} style={{ color: "var(--primary)" }} />
+          <ShieldCheck size={14} style={{ color: "var(--accent)" }} />
           <span>Secured with Role-Based Access Control & Immutable Ledger</span>
         </div>
       </div>
     </div>
   );
 }
-

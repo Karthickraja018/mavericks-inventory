@@ -45,6 +45,14 @@
   --bad: var(--danger);
   --warn: var(--warning);
   --mute: var(--muted);
+  --primary: var(--accent);
+  --primary-hover: var(--accent-dark);
+  --foreground: var(--ink);
+  --foreground-muted: var(--muted);
+  --foreground-subtle: #64748b;
+  --background: var(--canvas);
+  --background-subtle: var(--surface-subtle);
+  --border-subtle: var(--line);
 }
 
 * {
@@ -302,8 +310,10 @@ nav a[aria-current="page"] .nav-mark {
 main {
   width: 100%;
   max-width: 1440px;
-  padding: 32px 48px 72px;
+  min-width: 0;
+  padding: 20px 28px 48px;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .page-head {
@@ -311,13 +321,13 @@ main {
   align-items: flex-start;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .page-head p {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13.5px;
   max-width: 750px;
 }
 
@@ -340,6 +350,27 @@ main {
 
 .grid .card {
   margin: 0;
+}
+
+/* Responsive Dashboard Layout */
+.dashboard-grid-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .dashboard-grid-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.dashboard-cell {
+  min-width: 0;
+  width: 100%;
 }
 
 .big {
@@ -368,7 +399,15 @@ main {
   transform: translateY(-2px);
 }
 
-/* Tables */
+/* Tables & Horizontal Scroll Container */
+.table-container {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .scroll {
   overflow-x: auto;
   border-radius: var(--radius);
