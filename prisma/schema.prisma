@@ -224,12 +224,14 @@ model Approval {
 // ---------------------------------------------------------------------------
 
 model Employee {
-  id           String               @id @default(cuid())
-  empId        String               @unique
-  name         String
-  baseLocation String
-  active       Boolean              @default(true)
-  createdAt    DateTime             @default(now())
+  id            String               @id @default(cuid())
+  empId         String               @unique
+  name          String
+  baseLocation  String
+  department    String?
+  email         String?
+  active        Boolean              @default(true)
+  createdAt     DateTime             @default(now())
   distributions DistributionRecord[]
   importRows    ImportRow[]
 }
@@ -341,12 +343,33 @@ model ProcurementRecord {
 // Distribution records (historical + new via import)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Events & Goodies Distribution
+// ---------------------------------------------------------------------------
+
+model Event {
+  id            String               @id @default(cuid())
+  name          String
+  date          DateTime             @default(now())
+  category      String               @default("General") // Hackathon, Sports, Cultural, Town Hall, Milestone, etc.
+  location      String?
+  description   String?
+  status        String               @default("ACTIVE") // UPCOMING, ACTIVE, COMPLETED
+  createdAt     DateTime             @default(now())
+
+  distributions DistributionRecord[]
+}
+
 model DistributionRecord {
   id               String     @id @default(cuid())
   employeeId       String
   employee         Employee   @relation(fields: [employeeId], references: [id])
   itemId           String
   item             Item       @relation(fields: [itemId], references: [id])
+  eventId          String?
+  event            Event?     @relation(fields: [eventId], references: [id])
+  recipientType    String?    // WINNER, RUNNER_UP, PARTICIPANT, SPECIAL_RECOGNITION
+  notes            String?
   importJobId      String?
   importJob        ImportJob? @relation(fields: [importJobId], references: [id])
   sourceRow        Int?
@@ -362,6 +385,7 @@ model DistributionRecord {
 
   @@index([employeeId])
   @@index([itemId])
+  @@index([eventId])
   @@index([importJobId])
 }
 

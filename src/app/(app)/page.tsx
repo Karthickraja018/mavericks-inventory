@@ -24,6 +24,9 @@ export default async function Dashboard() {
     pendingProcurements,
     recentImports,
     needsReview,
+    activeEvents,
+    activeEmployees,
+    eventGoodies,
   ] = await Promise.all([
     db.item.count({ where: { active: true } }),
     db.request.count({ where: { status: { in: ["PENDING_MANAGER", "PENDING_AUTHORITY"] } } }),
@@ -57,6 +60,14 @@ export default async function Dashboard() {
     }),
     // Requests in NEEDS_REVIEW
     db.request.count({ where: { status: "NEEDS_REVIEW" } }),
+    // Active events
+    db.event.count({ where: { status: "ACTIVE" } }).catch(() => 0),
+    // Total employees
+    db.employee.count({ where: { active: true } }).catch(() => 0),
+    // Event goodies awarded
+    db.distributionRecord
+      .count({ where: { OR: [{ eventId: { not: null } }, { recipientType: { not: null } }] } })
+      .catch(() => 0),
   ]);
 
   return (
@@ -91,6 +102,18 @@ export default async function Dashboard() {
           <div className="big" style={myCount > 0 ? { color: "var(--warning)" } : undefined}>
             {myCount}
           </div>
+        </Link>
+        <Link href="/events" className="card metric-link">
+          <span className="metric-label">Active Events</span>
+          <div className="big" style={{ color: "var(--accent)" }}>{activeEvents}</div>
+        </Link>
+        <Link href="/events" className="card metric-link">
+          <span className="metric-label">Event Goodies Awarded</span>
+          <div className="big">{eventGoodies}</div>
+        </Link>
+        <Link href="/employees" className="card metric-link">
+          <span className="metric-label">Employees Tracked</span>
+          <div className="big">{activeEmployees}</div>
         </Link>
         {needsReview > 0 && (
           <Link href="/requests?status=NEEDS_REVIEW" className="card">

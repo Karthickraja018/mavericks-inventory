@@ -35,6 +35,7 @@ export default async function DistributionHistory({
         item: { select: { sku: true, name: true } },
         employee: { select: { empId: true, name: true } },
         importJob: { select: { filename: true, id: true } },
+        event: { select: { name: true } },
       },
     }),
     db.distributionRecord.count({ where }),
@@ -116,7 +117,15 @@ export default async function DistributionHistory({
                   {String(r.quantity)}
                 </td>
                 <td>
-                  <small>{r.category || <span style={{ color: "var(--faint)" }}>—</span>}</small>
+                  <small>
+                    {r.event?.name ? (
+                      <span style={{ fontWeight: 600, color: "var(--accent)" }}>
+                        {r.event.name} {r.recipientType ? `(${r.recipientType})` : ""}
+                      </span>
+                    ) : (
+                      r.category || <span style={{ color: "var(--faint)" }}>—</span>
+                    )}
+                  </small>
                 </td>
                 <td>
                   {r.sourceStatus ? (
