@@ -148,6 +148,16 @@ export async function deleteItem(f: FormData) {
 // ---------------------------------------------------------------------------
 // Requests (distribution)
 // ---------------------------------------------------------------------------
+async function syncRequestNumberSequence() {
+  await db.$executeRaw`
+    SELECT setval(
+      pg_get_serial_sequence('"Request"', 'number'),
+      GREATEST(COALESCE((SELECT MAX(number) FROM "Request"), 0) + 1, 1),
+      false
+    )
+  `;
+}
+
 async function submit(id: string, uid: string) {
   const levels = Number(process.env.APPROVAL_LEVELS) === 1 ? 1 : 2;
   const n = await db.request.updateMany({
@@ -169,6 +179,7 @@ export async function createRequest(f: FormData) {
   const items = await db.item.findMany({ where: { id: { in: [...m.keys()] }, active: true } });
   if (items.length !== m.size)
     redirect("/requests/new?error=One or more items are invalid or inactive");
+  await syncRequestNumberSequence();
   const r = await db.request.create({
     data: {
       requesterId: u.id,
