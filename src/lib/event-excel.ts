@@ -7,6 +7,7 @@ export type ParsedEventRecipient = {
   recipientType: "WINNER" | "RUNNER_UP" | "PARTICIPANT" | "SPECIAL_RECOGNITION";
   itemIdentifier: string; // SKU or Name
   quantity: number;
+  eventName?: string;
   baseLocation?: string;
   department?: string;
   email?: string;
@@ -18,6 +19,7 @@ export type EventParseResult = {
   errors: { row: number; error: string }[];
   duplicateEmpIds: string[];
   totalRows: number;
+  detectedEventName?: string;
 };
 
 function getCellValue(val: any): string {
@@ -49,14 +51,39 @@ export async function parseEventRecipientsWorkbook(buffer: Buffer): Promise<Even
     throw new Error("The uploaded Excel workbook contains no worksheets.");
   }
 
-  // Find header row (check row 1 through 5)
+  let detectedEventName: string | undefined;
+  let fallbackSheetTitle: string | undefined;
+
+  // Check worksheet title for fallback event name
+  const sheetTitle = worksheet.name?.trim();
+  if (
+    sheetTitle &&
+    !/^sheet\d*$/i.test(sheetTitle) &&
+    !/^worksheet\d*$/i.test(sheetTitle) &&
+    !/^event recipients$/i.test(sheetTitle) &&
+    !/^requisition request$/i.test(sheetTitle)
+  ) {
+    fallbackSheetTitle = sheetTitle;
+  }
+
+  // Find header row (check row 1 through 6)
   let headerRowIndex = 1;
-  for (let r = 1; r <= Math.min(5, worksheet.rowCount); r++) {
+  for (let r = 1; r <= Math.min(6, worksheet.rowCount); r++) {
     const row = worksheet.getRow(r);
     const rowValues: string[] = [];
     row.eachCell({ includeEmpty: false }, (cell) => {
-      rowValues.push(getCellValue(cell.value).toLowerCase());
+      const cellVal = getCellValue(cell.value);
+      rowValues.push(cellVal.toLowerCase());
+
+      // Also check if any cell above header row specifies Event name (e.g., "Event: Annual Hackathon 2026")
+      if (/^event(\s*name)?\s*[:=-]\s*(.+)$/i.test(cellVal)) {
+        const m = cellVal.match(/^event(\s*name)?\s*[:=-]\s*(.+)$/i);
+        if (m && m[2]?.trim()) {
+          detectedEventName = m[2].trim();
+        }
+      }
     });
+
     const hasEmpId = rowValues.some((v) => v.includes("emp") || v.includes("id"));
     const hasName = rowValues.some((v) => v.includes("name"));
     if (hasEmpId && hasName) {
@@ -72,6 +99,8 @@ export async function parseEventRecipientsWorkbook(buffer: Buffer): Promise<Even
     const val = getCellValue(cell.value).toLowerCase().replace(/[^a-z0-9]/g, "");
     if (val.includes("empid") || val === "id" || val.includes("employeeid") || val.includes("empno")) {
       colMap.empId = colNumber;
+    } else if (val.includes("event") || val.includes("occasion")) {
+      colMap.eventName = colNumber;
     } else if (val.includes("sku") || val.includes("item") || val.includes("goodie") || val.includes("product")) {
       colMap.item = colNumber;
     } else if (val.includes("name") || val.includes("employeename") || val.includes("fullname")) {
@@ -106,6 +135,7 @@ export async function parseEventRecipientsWorkbook(buffer: Buffer): Promise<Even
     const roleRaw = colMap.role ? getCellValue(row.getCell(colMap.role).value) : "";
     const itemRaw = colMap.item ? getCellValue(row.getCell(colMap.item).value) : "";
     const qtyRaw = colMap.quantity ? getCellValue(row.getCell(colMap.quantity).value) : "1";
+    const rowEventName = colMap.eventName ? getCellValue(row.getCell(colMap.eventName).value) : "";
     const baseLocation = colMap.baseLocation ? getCellValue(row.getCell(colMap.baseLocation).value) : "HQ";
     const department = colMap.department ? getCellValue(row.getCell(colMap.department).value) : undefined;
     const email = colMap.email ? getCellValue(row.getCell(colMap.email).value) : undefined;
@@ -121,6 +151,10 @@ export async function parseEventRecipientsWorkbook(buffer: Buffer): Promise<Even
     if (!name) {
       errors.push({ row: r, error: `Row ${r}: Missing Employee Name (Name is required)` });
       continue;
+    }
+
+    if (rowEventName && !detectedEventName) {
+      detectedEventName = rowEventName;
     }
 
     const cleanEmpId = empId.toUpperCase().trim();
@@ -140,6 +174,7 @@ export async function parseEventRecipientsWorkbook(buffer: Buffer): Promise<Even
       recipientType: normalizeRole(roleRaw),
       itemIdentifier: itemRaw.trim(),
       quantity,
+      eventName: rowEventName?.trim() || detectedEventName || fallbackSheetTitle || undefined,
       baseLocation: baseLocation.trim() || "HQ",
       department: department?.trim() || undefined,
       email: email?.trim() || undefined,
@@ -159,6 +194,7 @@ export async function parseEventRecipientsWorkbook(buffer: Buffer): Promise<Even
     errors,
     duplicateEmpIds,
     totalRows: recipients.length + errors.length,
+    detectedEventName: (detectedEventName || fallbackSheetTitle)?.trim() || undefined,
   };
 }
 
@@ -219,6 +255,89 @@ export async function generateEventRecipientsTemplate(): Promise<Buffer> {
       notes: "Hackathon 2nd Place",
     },
     {
+      empId: "EMP-003",
+      name: "David Chen",
+      role: "Participant",
+      item: "CAP-BLUE",
+      quantity: 1,
+      baseLocation: "HQ",
+      department: "Operations",
+      email: "david@mavericks.test",
+      notes: "Participant Swag",
+    },
+  ];
+
+  sampleRows.forEach((data) => {
+    const row = sheet.addRow(data);
+    row.height = 22;
+    row.alignment = { vertical: "middle" };
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  return Buffer.from(buffer);
+}
+
+export async function generateRequestRecipientsTemplate(): Promise<Buffer> {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = "Mavericks Inventory";
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet("Requisition Request", {
+    views: [{ showGridLines: true }],
+  });
+
+  sheet.columns = [
+    { header: "Event Name", key: "eventName", width: 26 },
+    { header: "Emp ID", key: "empId", width: 16 },
+    { header: "Name", key: "name", width: 26 },
+    { header: "Role", key: "role", width: 18 },
+    { header: "Item SKU or Name", key: "item", width: 28 },
+    { header: "Quantity", key: "quantity", width: 12 },
+    { header: "Base Location", key: "baseLocation", width: 18 },
+    { header: "Department", key: "department", width: 20 },
+    { header: "Email", key: "email", width: 26 },
+    { header: "Notes", key: "notes", width: 30 },
+  ];
+
+  // Header style
+  const headerRow = sheet.getRow(1);
+  headerRow.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
+  headerRow.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF2563EB" }, // Mavericks Blue
+  };
+  headerRow.alignment = { vertical: "middle", horizontal: "center" };
+  headerRow.height = 28;
+
+  // Sample data rows
+  const sampleRows = [
+    {
+      eventName: "Annual Hackathon 2026",
+      empId: "EMP-001",
+      name: "Karthick Raja",
+      role: "Winner",
+      item: "TSHIRT-L-ASH",
+      quantity: 1,
+      baseLocation: "Chennai",
+      department: "Engineering",
+      email: "karthick@mavericks.test",
+      notes: "1st Place Winner Goodie",
+    },
+    {
+      eventName: "Annual Hackathon 2026",
+      empId: "EMP-002",
+      name: "Sarah Jenkins",
+      role: "Runner-up",
+      item: "HOODIE-M-BLK",
+      quantity: 1,
+      baseLocation: "Bangalore",
+      department: "Design",
+      email: "sarah@mavericks.test",
+      notes: "2nd Place Runner-up",
+    },
+    {
+      eventName: "Annual Hackathon 2026",
       empId: "EMP-003",
       name: "David Chen",
       role: "Participant",

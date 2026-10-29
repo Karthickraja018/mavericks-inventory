@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { ArrowLeft, CheckCircle2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, CheckCircle2, AlertTriangle, Plus } from "lucide-react";
 import { EventDetailView, EventDetailData, AvailableItem, AvailableEmployee } from "./event-detail-view";
 
 export const dynamic = "force-dynamic";
@@ -209,11 +209,20 @@ export default async function EventDetailPage({
         description={`Event management workspace for ${event.category} (${eventDetailData.dateStr})`}
         badge={<StatusBadge status={event.status} size="sm" />}
         actions={
-          <Link href="/events">
-            <button className="ghost" style={{ minHeight: 34, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <ArrowLeft size={14} /> Back to Events
-            </button>
-          </Link>
+          <div style={{ display: "flex", gap: 10 }}>
+            {(u.role === "EXECUTIVE" || u.role === "ADMIN") && (
+              <Link href={`/requests/new?eventId=${event.id}`}>
+                <button style={{ minHeight: 34, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Plus size={14} /> Raise Request for Event
+                </button>
+              </Link>
+            )}
+            <Link href="/events">
+              <button className="ghost" style={{ minHeight: 34, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <ArrowLeft size={14} /> Back to Events
+              </button>
+            </Link>
+          </div>
         }
       />
 

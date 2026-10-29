@@ -6,7 +6,7 @@ import { submitRequest, decide } from "../../../actions";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { StockIndicator } from "@/components/ui/stock-indicator";
-import { ArrowLeft, CheckCircle2, Clock, XCircle, AlertTriangle, User, Calendar, FileText } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock, XCircle, AlertTriangle, User, Calendar, FileText, Gift, Users, Award } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -17,18 +17,29 @@ export default async function RequestDetailPage({
 }) {
   const u = await requireUser();
 
-  const r = await db.request.findUnique({
-    where: { id: params.id },
-    include: {
-      lines: {
-        include: {
-          item: { select: { sku: true, name: true, quantity: true, unit: true } },
+  const [r, distributions] = await Promise.all([
+    db.request.findUnique({
+      where: { id: params.id },
+      include: {
+        lines: {
+          include: {
+            item: { select: { sku: true, name: true, quantity: true, unit: true } },
+          },
         },
+        approvals: { orderBy: { stage: "asc" } },
+        requester: true,
+        event: true,
       },
-      approvals: { orderBy: { stage: "asc" } },
-      requester: true,
-    },
-  });
+    }),
+    db.distributionRecord.findMany({
+      where: { sourceRef: params.id },
+      include: {
+        employee: true,
+        item: { select: { sku: true, name: true, unit: true } },
+      },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
 
   if (!r || (u.role === "EXECUTIVE" && r.requesterId !== u.id)) {
     notFound();
@@ -136,10 +147,64 @@ export default async function RequestDetailPage({
         </div>
       </div>
 
+      {/* Linked Event Card */}
+      {r.event && (
+        <div
+          className="card"
+          style={{
+            marginBottom: 20,
+            padding: 16,
+            background: "var(--surface)",
+            border: "1px solid var(--line)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 12,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 8,
+                background: "var(--accent-soft)",
+                color: "var(--accent-dark)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Gift size={22} />
+            </div>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Link href={`/events/${r.event.id}`}>
+                  <strong style={{ fontSize: 15, color: "var(--accent)" }}>{r.event.name}</strong>
+                </Link>
+                <StatusBadge status={r.event.status} size="sm" />
+              </div>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
+                Category: <strong>{r.event.category}</strong> · Date:{" "}
+                {r.event.date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                {r.event.location ? ` · Location: ${r.event.location}` : ""}
+              </div>
+            </div>
+          </div>
+
+          <Link href={`/events/${r.event.id}`}>
+            <button className="ghost" style={{ fontSize: 12.5, minHeight: 34 }}>
+              Open Event Dashboard →
+            </button>
+          </Link>
+        </div>
+      )}
+
       {/* Requested Line Items Table */}
       <div className="card scroll" style={{ padding: 0, marginBottom: 20 }}>
         <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between" }}>
-          <h3 style={{ margin: 0, fontSize: 14 }}>Requested Items ({r.lines.length})</h3>
+          <h3 style={{ margin: 0, fontSize: 14 }}>Aggregated Line Items ({r.lines.length})</h3>
           <span style={{ fontSize: 12, color: "var(--muted)" }}>Total Units: {totalUnits}</span>
         </div>
         <table>
@@ -189,6 +254,108 @@ export default async function RequestDetailPage({
           </tbody>
         </table>
       </div>
+
+      {/* Recipient Employees Allocation Table (if linked distribution records exist) */}
+      {distributions.length > 0 && (
+        <div className="card scroll" style={{ padding: 0, marginBottom: 20 }}>
+          <div
+            style={{
+              padding: "14px 18px",
+              borderBottom: "1px solid var(--line)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 10,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Users size={16} style={{ color: "var(--accent)" }} />
+              <h3 style={{ margin: 0, fontSize: 14 }}>
+                Recipient Employees & Allocated Goodies ({distributions.length})
+              </h3>
+            </div>
+            <span style={{ fontSize: 12, color: "var(--muted)" }}>
+              {new Set(distributions.map((d) => d.employeeId)).size} unique employees
+            </span>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th style={{ width: 140 }}>Emp ID</th>
+                <th>Employee Name</th>
+                <th style={{ width: 140 }}>Recognition Role</th>
+                <th>Goodie Assigned</th>
+                <th className="numeric" style={{ width: 80 }}>Qty</th>
+                <th style={{ width: 140 }}>Allocation Status</th>
+                <th style={{ textAlign: "right", width: 100 }}>Profile</th>
+              </tr>
+            </thead>
+            <tbody>
+              {distributions.map((dist) => (
+                <tr key={dist.id}>
+                  <td>
+                    <code>{dist.employee.empId}</code>
+                  </td>
+                  <td>
+                    <strong style={{ fontSize: 13 }}>{dist.employee.name}</strong>
+                    <small style={{ color: "var(--muted)", display: "block" }}>
+                      {dist.employee.baseLocation} {dist.employee.department ? `· ${dist.employee.department}` : ""}
+                    </small>
+                  </td>
+                  <td>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        padding: "2px 7px",
+                        borderRadius: 4,
+                        fontSize: 11,
+                        fontWeight: 650,
+                        background:
+                          dist.recipientType === "WINNER"
+                            ? "rgba(245, 158, 11, 0.15)"
+                            : dist.recipientType === "RUNNER_UP"
+                            ? "rgba(59, 130, 246, 0.15)"
+                            : "var(--surface-subtle)",
+                        color:
+                          dist.recipientType === "WINNER"
+                            ? "#d97706"
+                            : dist.recipientType === "RUNNER_UP"
+                            ? "#2563eb"
+                            : "var(--foreground-muted)",
+                      }}
+                    >
+                      {(dist.recipientType || "PARTICIPANT").replace(/_/g, " ")}
+                    </span>
+                  </td>
+                  <td>
+                    <div>
+                      <strong style={{ fontSize: 12.5 }}>{dist.item.name}</strong>
+                      <small style={{ color: "var(--muted)", display: "block" }}>
+                        <code>{dist.item.sku}</code>
+                      </small>
+                    </div>
+                  </td>
+                  <td className="numeric" style={{ fontWeight: 700 }}>
+                    {Number(dist.quantity)}
+                  </td>
+                  <td>
+                    <StatusBadge status={dist.status} size="sm" />
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    <Link href={`/employees/${dist.employee.id}`}>
+                      <button className="ghost" style={{ fontSize: 11, padding: "2px 8px", minHeight: 26 }}>
+                        View →
+                      </button>
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Approval Timeline */}
       <div className="card" style={{ marginBottom: 20, padding: 20 }}>

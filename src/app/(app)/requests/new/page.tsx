@@ -10,14 +10,20 @@ export const dynamic = "force-dynamic";
 export default async function NewRequestPage({
   searchParams,
 }: {
-  searchParams: { error?: string };
+  searchParams: { error?: string; eventId?: string };
 }) {
   await requireUser(["EXECUTIVE", "ADMIN"]);
 
-  const itemsRaw = await db.item.findMany({
-    where: { active: true },
-    orderBy: { name: "asc" },
-  });
+  const [itemsRaw, eventsRaw] = await Promise.all([
+    db.item.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+    }),
+    db.event.findMany({
+      orderBy: { date: "desc" },
+      select: { id: true, name: true, category: true, date: true, status: true },
+    }),
+  ]);
 
   const items = itemsRaw.map((it) => ({
     id: it.id,
@@ -30,11 +36,19 @@ export default async function NewRequestPage({
     quantity: Number(it.quantity),
   }));
 
+  const events = eventsRaw.map((e) => ({
+    id: e.id,
+    name: e.name,
+    category: e.category,
+    date: e.date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+    status: e.status,
+  }));
+
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto" }}>
+    <div style={{ maxWidth: 960, margin: "0 auto" }}>
       <PageHeader
         title="New Distribution Request"
-        description="Create an internal item requisition. Multi-stage approvals ensure inventory availability and managerial oversight."
+        description="Raise an inventory requisition via smart Excel extraction or manual line selection. Automatically links or creates events and recipient records."
         breadcrumbs={[
           { label: "Workspace", href: "/" },
           { label: "Distribution Requests", href: "/requests" },
@@ -51,7 +65,8 @@ export default async function NewRequestPage({
 
       {searchParams.error && <div className="err">{searchParams.error}</div>}
 
-      <RequestForm items={items} />
+      <RequestForm items={items} events={events} initialEventId={searchParams.eventId} />
     </div>
   );
 }
+

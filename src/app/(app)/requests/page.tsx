@@ -38,6 +38,7 @@ export default async function RequestsPage({
       include: {
         requester: { select: { name: true, role: true } },
         lines: { select: { quantity: true, itemName: true } },
+        event: { select: { id: true, name: true } },
       },
       orderBy: { number: "desc" },
       take: 200,
@@ -167,7 +168,25 @@ export default async function RequestsPage({
                   </td>
                   <td>
                     <div style={{ fontSize: 13, color: "var(--ink-soft)", maxWidth: 380, overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {r.purpose || <span style={{ color: "var(--faint)" }}>No purpose specified</span>}
+                      {r.event && (
+                        <Link
+                          href={`/events/${r.event.id}`}
+                          style={{
+                            display: "inline-block",
+                            padding: "1px 6px",
+                            borderRadius: 4,
+                            fontSize: 11,
+                            fontWeight: 650,
+                            background: "var(--accent-soft)",
+                            color: "var(--accent-dark)",
+                            marginRight: 6,
+                            textDecoration: "none",
+                          }}
+                        >
+                          🎪 {r.event.name}
+                        </Link>
+                      )}
+                      <span>{r.purpose || <span style={{ color: "var(--faint)" }}>No purpose specified</span>}</span>
                     </div>
                   </td>
                   <td>

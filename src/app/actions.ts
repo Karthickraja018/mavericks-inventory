@@ -168,7 +168,7 @@ async function submit(id: string, uid: string) {
 }
 
 export async function createRequest(f: FormData) {
-  const u = await requireUser(["EXECUTIVE"]);
+  const u = await requireUser(["EXECUTIVE", "ADMIN"]);
   const m = new Map<string, number>();
   for (let i = 0; i < 10; i++) {
     const id = String(f.get(`item${i}`) || "");
@@ -179,25 +179,56 @@ export async function createRequest(f: FormData) {
   const items = await db.item.findMany({ where: { id: { in: [...m.keys()] }, active: true } });
   if (items.length !== m.size)
     redirect("/requests/new?error=One or more items are invalid or inactive");
+
+  // Optional Event link or auto-creation
+  const eventId = String(f.get("eventId") || "").trim();
+  const newEventName = String(f.get("newEventName") || "").trim();
+  const eventCategory = String(f.get("eventCategory") || "General").trim();
+
+  let resolvedEventId: string | null = null;
+  if (eventId) {
+    const existing = await db.event.findUnique({ where: { id: eventId } });
+    if (existing) resolvedEventId = existing.id;
+  } else if (newEventName) {
+    let ev = await db.event.findFirst({
+      where: { name: { equals: newEventName, mode: "insensitive" } },
+    });
+    if (!ev) {
+      ev = await db.event.create({
+        data: {
+          name: newEventName,
+          category: eventCategory || "General",
+          status: "ACTIVE",
+        },
+      });
+    }
+    resolvedEventId = ev.id;
+  }
+
   await syncRequestNumberSequence();
   const r = await db.request.create({
     data: {
       requesterId: u.id,
+      eventId: resolvedEventId,
       purpose: String(f.get("purpose") || ""),
       lines: {
         create: items.map((i) => ({ itemId: i.id, itemName: i.name, quantity: m.get(i.id)! })),
       },
     },
   });
-  await audit(db, u.id, "REQUEST_CREATED", "Request", r.id);
+  await audit(db, u.id, "REQUEST_CREATED", "Request", r.id, { eventId: resolvedEventId });
   if (f.get("intent") === "submit") await submit(r.id, u.id);
+  revalidatePath("/requests");
+  if (resolvedEventId) revalidatePath(`/events/${resolvedEventId}`);
   redirect(`/requests/${r.id}`);
 }
 
 export async function submitRequest(f: FormData) {
-  const u = await requireUser(["EXECUTIVE"]);
+  const u = await requireUser(["EXECUTIVE", "ADMIN"]);
   const id = String(f.get("id"));
   await submit(id, u.id);
+  revalidatePath("/requests");
+  revalidatePath(`/requests/${id}`);
   redirect(`/requests/${id}`);
 }
 
