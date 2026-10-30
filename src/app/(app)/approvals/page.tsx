@@ -14,15 +14,22 @@ export const dynamic = "force-dynamic";
 export default async function ApprovalsPage({
   searchParams,
 }: {
-  searchParams: { error?: string };
+  searchParams: { error?: string; success?: string };
 }) {
-  const u = await requireUser(["MANAGER", "AUTHORITY"]);
+  const u = await requireUser(["ADMIN", "MANAGER", "AUTHORITY"]);
+
+  const requestStatusFilter =
+    u.role === "MANAGER"
+      ? "PENDING_MANAGER"
+      : u.role === "AUTHORITY"
+      ? "PENDING_AUTHORITY"
+      : { in: ["PENDING_MANAGER", "PENDING_AUTHORITY"] };
 
   const [requests, imports] = await Promise.all([
     db.request.findMany({
       where: {
-        status: u.role === "MANAGER" ? "PENDING_MANAGER" : "PENDING_AUTHORITY",
-        requesterId: { not: u.id },
+        status: requestStatusFilter as any,
+        requesterId: u.role === "ADMIN" ? undefined : { not: u.id },
       },
       include: {
         requester: true,
@@ -34,7 +41,7 @@ export default async function ApprovalsPage({
       where: {
         status: "AWAITING_APPROVAL",
         type: { in: ["STOCK_COUNT", "PROCUREMENT"] },
-        uploadedById: { not: u.id },
+        uploadedById: u.role === "ADMIN" ? undefined : { not: u.id },
       },
       include: {
         uploadedBy: true,
@@ -48,7 +55,12 @@ export default async function ApprovalsPage({
     }),
   ]);
 
-  const stageLabel = u.role === "MANAGER" ? "Stage 1: Manager Review" : "Stage 2: Final Authority Decision";
+  const stageLabel =
+    u.role === "MANAGER"
+      ? "Stage 1: Manager Review"
+      : u.role === "AUTHORITY"
+      ? "Stage 2: Final Authority Decision"
+      : "Administrator (All Workflow Stages & System Override)";
 
   return (
     <>
@@ -63,6 +75,7 @@ export default async function ApprovalsPage({
       />
 
       {searchParams.error && <div className="err">{searchParams.error}</div>}
+      {searchParams.success && <div className="ok">{searchParams.success}</div>}
 
       {/* Requisition Approvals Section */}
       <div style={{ marginBottom: 28 }}>

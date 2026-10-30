@@ -99,16 +99,24 @@ async function resolveRows(jobId: string, type: TemplateKey) {
     const raw = row.raw as Record<string, unknown>;
     const product = normalizeProductFields(raw);
     const errors = Array.isArray(row.errors) ? [...(row.errors as object[])] : [];
-    const candidates = items.filter((item) => {
-      const productMatch =
-        item.sku.toLowerCase() === product.product.toLowerCase() ||
-        item.name.toLowerCase() === product.product.toLowerCase() ||
-        item.product?.name.toLowerCase() === product.product.toLowerCase();
-      return productMatch &&
-        item.size.toLowerCase() === product.size.toLowerCase() &&
-        item.color.toLowerCase() === product.color.toLowerCase() &&
-        item.brand.toLowerCase() === product.brand.toLowerCase();
-    });
+    
+    // Check SKU-id match first, then fall back to full attribute matching
+    const rawProd = String(raw["Product Details"] || raw["Product"] || raw["SKU"] || "").trim().toLowerCase();
+    let candidates = items.filter((item) => 
+      item.sku.toLowerCase() === rawProd || 
+      item.sku.toLowerCase() === product.product.toLowerCase()
+    );
+    if (candidates.length === 0) {
+      candidates = items.filter((item) => {
+        const productMatch =
+          item.name.toLowerCase() === product.product.toLowerCase() ||
+          item.product?.name.toLowerCase() === product.product.toLowerCase();
+        return productMatch &&
+          item.size.toLowerCase() === product.size.toLowerCase() &&
+          item.color.toLowerCase() === product.color.toLowerCase() &&
+          item.brand.toLowerCase() === product.brand.toLowerCase();
+      });
+    }
     if (candidates.length !== 1) {
       errors.push({
         field: "Product",
@@ -288,7 +296,7 @@ export async function commitImport(f: FormData) {
 }
 
 export async function approveImportStock(f: FormData) {
-  const u = await requireUser(["MANAGER", "AUTHORITY"]);
+  const u = await requireUser(["ADMIN", "MANAGER", "AUTHORITY"]);
   const id = String(f.get("id") || "");
   const approve = f.get("decision") === "approve";
   const reason = String(f.get("reason") || "").trim();
@@ -297,7 +305,7 @@ export async function approveImportStock(f: FormData) {
     await db.$transaction(async (tx) => {
       const job = await tx.importJob.findUnique({ where: { id }, include: { rows: true, reconciliations: true, procurements: true } });
       if (!job || job.status !== "AWAITING_APPROVAL") throw new Error("Import is not awaiting approval.");
-      if (job.uploadedById === u.id) throw new Error("You cannot approve your own import.");
+      if (job.uploadedById === u.id && u.role !== "ADMIN") throw new Error("You cannot approve your own import.");
       if (job.type === "STOCK_COUNT") {
         const existingLedger = await tx.stockMovement.count();
         if (existingLedger === 0 && job.rows.some((row) => Number((row.raw as any).Available) < 0)) throw new Error("Initial stock cannot be negative.");
@@ -347,12 +355,12 @@ export async function approveImportStock(f: FormData) {
       }
       await tx.importJob.update({ where: { id }, data: { status: approve ? "COMMITTED" : "FAILED", committedById: u.id, committedAt: new Date(), errorSummary: approve ? null : reason } });
       await tx.auditLog.create({ data: { actorId: u.id, action: approve ? "IMPORT_STOCK_APPROVED" : "IMPORT_STOCK_REJECTED", entity: "ImportJob", entityId: id, correlationId: id, detail: { reason } } });
-    });
+    }, { maxWait: 15000, timeout: 30000 });
   } catch (e) {
     redirect(`/approvals?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath("/approvals");
   revalidatePath("/imports");
   revalidatePath(`/imports/${id}`);
-  redirect("/approvals");
+  redirect(approve ? `/approvals?success=${encodeURIComponent("Import approved and stock movements posted successfully.")}` : `/approvals?success=${encodeURIComponent("Import rejected.")}`);
 }

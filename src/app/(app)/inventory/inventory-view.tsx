@@ -40,6 +40,7 @@ export function InventoryView({
   const [stockFilter, setStockFilter] = useState(initialStockFilter);
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Filter items
   const filteredItems = items.filter((item) => {
@@ -348,7 +349,17 @@ export function InventoryView({
               </button>
             </div>
 
-            <form action={createItem} style={{ display: "grid", gap: 14 }}>
+            <form
+              action={async (formData) => {
+                setIsSubmitting(true);
+                try {
+                  await createItem(formData);
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }}
+              style={{ display: "grid", gap: 14 }}
+            >
               {/* Group 1: Identity */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 10 }}>
                 <div>
@@ -377,8 +388,8 @@ export function InventoryView({
                 </div>
               </div>
 
-              {/* Group 3: Classification */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {/* Group 3: Classification & Opening Stock */}
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 10 }}>
                 <div>
                   <label htmlFor="category">Category</label>
                   <input id="category" name="category" placeholder="e.g. Apparel, Swag, Tech" defaultValue="General" />
@@ -386,6 +397,18 @@ export function InventoryView({
                 <div>
                   <label htmlFor="unit">Unit of Measure</label>
                   <input id="unit" name="unit" defaultValue="pcs" placeholder="pcs, roll, box" />
+                </div>
+                <div>
+                  <label htmlFor="initialStock">Initial Stock</label>
+                  <input
+                    id="initialStock"
+                    name="initialStock"
+                    type="number"
+                    min="0"
+                    step="1"
+                    defaultValue="0"
+                    placeholder="0"
+                  />
                 </div>
               </div>
 
@@ -400,9 +423,9 @@ export function InventoryView({
                   gap: 8,
                 }}
               >
-                <AlertCircle size={16} style={{ color: "var(--warning)", flexShrink: 0, marginTop: 1 }} />
+                <AlertCircle size={16} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 1 }} />
                 <span>
-                  Initial opening stock is established safely through reconciliation or procurement imports to guarantee an auditable ledger history.
+                  Initial opening stock balance will be safely posted to the immutable ledger with an auditable opening adjustment record.
                 </span>
               </div>
 
@@ -411,11 +434,12 @@ export function InventoryView({
                   type="button"
                   className="ghost"
                   onClick={() => setIsAddModalOpen(false)}
+                  disabled={isSubmitting}
                 >
                   Cancel
                 </button>
-                <button type="submit">
-                  Save Item
+                <button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Saving Variant & Posting Stock..." : "Save Item"}
                 </button>
               </div>
             </form>

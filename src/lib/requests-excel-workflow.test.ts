@@ -176,7 +176,7 @@ test("Requests from Excel & Event Auto-Creation Workflow Suite", async (t) => {
           },
         });
       }
-    });
+    }, { maxWait: 15000, timeout: 30000 });
 
     // Verify Event was created
     assert.ok(createdEvent.id, "Event was created");
@@ -266,7 +266,7 @@ test("Requests from Excel & Event Auto-Creation Workflow Suite", async (t) => {
         where: { id: createdRequest.id },
         data: { status: "APPROVED" },
       });
-    });
+    }, { maxWait: 15000, timeout: 30000 });
 
     // Verify stock was deducted
     const itemAAfter = await db.item.findUnique({ where: { id: itemA.id } });

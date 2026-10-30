@@ -17,7 +17,7 @@ export default async function ItemDetailPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { page?: string; tab?: string; error?: string };
+  searchParams: { page?: string; tab?: string; error?: string; success?: string };
 }) {
   const u = await requireUser();
   const page = Math.max(1, Number(searchParams.page) || 1);
@@ -81,6 +81,7 @@ export default async function ItemDetailPage({
       />
 
       {searchParams.error && <div className="err">{searchParams.error}</div>}
+      {searchParams.success && <div className="ok">{searchParams.success}</div>}
 
       {discrepancy && (
         <div

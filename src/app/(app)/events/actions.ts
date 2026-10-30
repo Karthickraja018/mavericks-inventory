@@ -354,7 +354,7 @@ export async function upsertEventRecipientAndDistribute(f: FormData) {
           },
         },
       });
-    });
+    }, { maxWait: 15000, timeout: 30000 });
   } catch (e: any) {
     err = e.message || "Failed to process recipient distribution.";
   }
@@ -642,7 +642,7 @@ export async function executeEventRecipientsBulkImport(
         },
       },
     });
-  });
+  }, { maxWait: 15000, timeout: 30000 });
 
   revalidatePath(`/events/${eventId}`);
   revalidatePath("/events");

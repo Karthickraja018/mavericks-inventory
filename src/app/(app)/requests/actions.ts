@@ -386,7 +386,7 @@ export async function createRequestFromExcelAction(payload: CreateRequestFromExc
         },
       },
     });
-  });
+  }, { maxWait: 15000, timeout: 30000 });
 
   revalidatePath("/requests");
   revalidatePath(`/requests/${createdRequestId}`);

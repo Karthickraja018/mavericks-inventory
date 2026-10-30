@@ -43,34 +43,85 @@ export async function logout() {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Items (product variants)
 // ---------------------------------------------------------------------------
 export async function createItem(f: FormData) {
   const u = await requireUser(["ADMIN"]);
   let err = "";
+  let successMsg = "";
   try {
-    const sku = String(f.get("sku") || "").trim();
+    const sku = String(f.get("sku") || "").trim().toUpperCase();
     const name = String(f.get("name") || "").trim();
-    const unit = String(f.get("unit") || "pcs").trim();
+    const unit = String(f.get("unit") || "pcs").trim() || "pcs";
     const size = String(f.get("size") || "").trim();
     const color = String(f.get("color") || "").trim();
     const brand = String(f.get("brand") || "").trim();
-    const category = String(f.get("category") || "General").trim();
+    const category = String(f.get("category") || "General").trim() || "General";
+    const initialStockRaw = f.get("initialStock");
+    const initialStock = initialStockRaw ? Math.max(0, Number(initialStockRaw) || 0) : 0;
+
     if (!sku || !name) throw new Error("SKU and name are required.");
-    const i = await db.item.create({
-      data: { sku, name, unit, size, color, brand, category },
-    });
-    // PTD-10: opening stock only via approved reconciliation — no stock written here.
-    await audit(db, u.id, "ITEM_CREATED", "Item", i.id, { sku, name, size, color, brand });
+
+    const existing = await db.item.findUnique({ where: { sku } });
+    if (existing) throw new Error(`An item with SKU "${sku}" already exists (${existing.name}).`);
+
+    await db.$transaction(async (tx) => {
+      const i = await tx.item.create({
+        data: {
+          sku,
+          name,
+          unit,
+          size,
+          color,
+          brand,
+          category,
+          quantity: initialStock,
+        },
+      });
+
+      if (initialStock > 0) {
+        await tx.stockMovement.create({
+          data: {
+            itemId: i.id,
+            change: String(initialStock),
+            balanceAfter: String(initialStock),
+            type: "OPENING_ADJUSTMENT",
+            actorId: u.id,
+            sourceType: "DIRECT",
+            sourceId: i.id,
+            idempotencyKey: `opening:${i.id}:${Date.now()}`,
+            approvedById: u.id,
+            approvedAt: new Date(),
+            reason: `Initial opening stock upon item creation (${initialStock} ${unit})`,
+          },
+        });
+      }
+
+      await audit(tx as any, u.id, "ITEM_CREATED", "Item", i.id, {
+        sku,
+        name,
+        size,
+        color,
+        brand,
+        initialStock,
+      });
+    }, { maxWait: 15000, timeout: 30000 });
+
+    successMsg = `Product variant "${name}" (${sku}) added successfully${initialStock > 0 ? ` with initial stock of ${initialStock} ${unit}` : ""}.`;
   } catch (e) {
     err = (e as Error).message || "SKU already exists or fields are invalid";
   }
+
   if (err) redirect(`/inventory?error=${encodeURIComponent(err)}`);
   revalidatePath("/inventory");
+  revalidatePath("/reports");
+  revalidatePath("/");
+  redirect(`/inventory?success=${encodeURIComponent(successMsg)}`);
 }
 
 function itemInput(f: FormData) {
-  const sku = String(f.get("sku") || "").trim();
+  const sku = String(f.get("sku") || "").trim().toUpperCase();
   const name = String(f.get("name") || "").trim();
   const unit = String(f.get("unit") || "pcs").trim() || "pcs";
   const size = String(f.get("size") || "").trim();
@@ -101,31 +152,35 @@ export async function updateItem(f: FormData) {
   }
   revalidatePath("/inventory");
   revalidatePath(`/inventory/${id}`);
-  redirect(`/inventory/${id}`);
+  redirect(`/inventory/${id}?success=${encodeURIComponent("Item specifications updated successfully.")}`);
 }
 
 export async function toggleItem(f: FormData) {
   const u = await requireUser(["ADMIN"]);
   const id = String(f.get("id") || "");
+  let nextState = false;
   try {
     const item = await db.item.findUnique({ where: { id }, select: { active: true, sku: true } });
     if (!item) throw new Error("Item was not found.");
-    await db.item.update({ where: { id }, data: { active: !item.active } });
+    nextState = !item.active;
+    await db.item.update({ where: { id }, data: { active: nextState } });
     await audit(db, u.id, item.active ? "ITEM_DEACTIVATED" : "ITEM_ACTIVATED", "Item", id, { sku: item.sku });
   } catch (e) {
     redirect(`/inventory/${id}?error=${encodeURIComponent((e as Error).message || "Unable to change item status.")}`);
   }
   revalidatePath("/inventory");
   revalidatePath(`/inventory/${id}`);
-  redirect(`/inventory/${id}`);
+  redirect(`/inventory/${id}?success=${encodeURIComponent(`Item variant ${nextState ? "activated" : "deactivated"} successfully.`)}`);
 }
 
 export async function deleteItem(f: FormData) {
   const u = await requireUser(["ADMIN"]);
   const id = String(f.get("id") || "");
+  let deletedSku = "";
   try {
     const item = await db.item.findUnique({ where: { id }, select: { sku: true } });
     if (!item) throw new Error("Item was not found.");
+    deletedSku = item.sku;
     const [moves, lines, recons, procurements, distributions, rows] = await Promise.all([
       db.stockMovement.count({ where: { itemId: id } }),
       db.requestLine.count({ where: { itemId: id } }),
@@ -142,7 +197,128 @@ export async function deleteItem(f: FormData) {
     redirect(`/inventory/${id}?error=${encodeURIComponent((e as Error).message || "Unable to delete item.")}`);
   }
   revalidatePath("/inventory");
-  redirect("/inventory");
+  redirect(`/inventory?success=${encodeURIComponent(`Item variant "${deletedSku}" deleted successfully.`)}`);
+}
+
+// ---------------------------------------------------------------------------
+// Procurement & Inbound Stock Operations
+// ---------------------------------------------------------------------------
+export async function createProcurementRecord(f: FormData) {
+  const u = await requireUser(["ADMIN", "MANAGER", "AUTHORITY"]);
+  let err = "";
+  let successMsg = "";
+  try {
+    const sku = String(f.get("sku") || "").trim().toUpperCase();
+    const name = String(f.get("name") || "").trim();
+    const category = String(f.get("category") || "General").trim() || "General";
+    const unit = String(f.get("unit") || "pcs").trim() || "pcs";
+    const size = String(f.get("size") || "").trim();
+    const color = String(f.get("color") || "").trim();
+    const brand = String(f.get("brand") || "").trim();
+    const mode = (String(f.get("mode") || "NEW").trim() as "NEW" | "HISTORICAL") || "NEW";
+    const quantityNum = Number(f.get("quantity") || 0);
+    const dateStr = String(f.get("procurementDate") || "").trim();
+    const procurementDate = dateStr ? new Date(dateStr) : new Date();
+    const sourceRef = String(f.get("sourceRef") || "").trim() || null;
+    const reason = String(f.get("reason") || "").trim() || null;
+
+    if (!sku) throw new Error("SKU is required.");
+    if (quantityNum <= 0) throw new Error("Quantity must be greater than zero.");
+
+    await db.$transaction(async (tx) => {
+      // 1. Check if item already exists by SKU match
+      let item = await tx.item.findUnique({ where: { sku } });
+
+      let isNewItem = false;
+      if (!item) {
+        // Create new item through procurement
+        if (!name) throw new Error(`New item with SKU "${sku}" requires a display name.`);
+        item = await tx.item.create({
+          data: {
+            sku,
+            name,
+            category,
+            unit,
+            size,
+            color,
+            brand,
+            quantity: 0,
+            active: true,
+          },
+        });
+        isNewItem = true;
+        await audit(tx as any, u.id, "ITEM_CREATED", "Item", item.id, {
+          sku,
+          name,
+          source: "PROCUREMENT",
+        });
+      }
+
+      let moveId: string | null = null;
+      if (mode === "NEW") {
+        // Atomically increment item quantity
+        const updated = await tx.item.update({
+          where: { id: item.id },
+          data: { quantity: { increment: quantityNum } },
+        });
+
+        const move = await tx.stockMovement.create({
+          data: {
+            itemId: item.id,
+            change: String(quantityNum),
+            balanceAfter: updated.quantity,
+            type: "PROCUREMENT_IN",
+            actorId: u.id,
+            sourceType: "PROCUREMENT",
+            sourceRef,
+            idempotencyKey: `proc:${item.id}:${Date.now()}`,
+            approvedById: u.id,
+            approvedAt: new Date(),
+            reason: reason || `Procurement stock-in (+${quantityNum} ${item.unit})`,
+          },
+        });
+        moveId = move.id;
+      }
+
+      const procRecord = await tx.procurementRecord.create({
+        data: {
+          itemId: item.id,
+          mode,
+          procurementDate,
+          quantity: String(quantityNum),
+          status: "POSTED",
+          movementId: moveId,
+          sourceRef,
+          approverId: u.id,
+          approvedAt: new Date(),
+          reason,
+        },
+      });
+
+      await audit(tx as any, u.id, "PROCUREMENT_RECORDED", "ProcurementRecord", procRecord.id, {
+        sku: item.sku,
+        name: item.name,
+        quantity: quantityNum,
+        mode,
+        isNewItem,
+      });
+
+      if (isNewItem) {
+        successMsg = `Created new item "${item.name}" (${item.sku}) and recorded procurement of +${quantityNum} ${item.unit}.`;
+      } else {
+        successMsg = `Matched SKU ${item.sku} ("${item.name}"): updated existing stock by +${quantityNum} ${item.unit}.`;
+      }
+    }, { maxWait: 15000, timeout: 30000 });
+  } catch (e: any) {
+    err = e.message || "Failed to record procurement.";
+  }
+
+  if (err) redirect(`/procurement?error=${encodeURIComponent(err)}`);
+  revalidatePath("/procurement");
+  revalidatePath("/inventory");
+  revalidatePath("/reports");
+  revalidatePath("/");
+  redirect(`/procurement?success=${encodeURIComponent(successMsg)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -237,7 +413,7 @@ export async function submitRequest(f: FormData) {
 // Commits or rolls back together. NEEDS_REVIEW on insufficient stock.
 // ---------------------------------------------------------------------------
 export async function decide(f: FormData) {
-  const u = await requireUser(["MANAGER", "AUTHORITY"]);
+  const u = await requireUser(["ADMIN", "MANAGER", "AUTHORITY"]);
   const id = String(f.get("id"));
   const approve = f.get("decision") === "approve";
   const remarks = String(f.get("remarks") || "").trim();
@@ -254,9 +430,9 @@ export async function decide(f: FormData) {
       const stage =
         r?.status === "PENDING_MANAGER" ? 1 : r?.status === "PENDING_AUTHORITY" ? 2 : 0;
       if (!r || !stage) throw new Error("This request is no longer awaiting approval");
-      if (u.role !== (stage === 1 ? "MANAGER" : "AUTHORITY"))
+      if (u.role !== "ADMIN" && u.role !== (stage === 1 ? "MANAGER" : "AUTHORITY"))
         throw new Error("You are not the approver for this stage");
-      if (r.requesterId === u.id) throw new Error("You cannot approve your own request");
+      if (r.requesterId === u.id && u.role !== "ADMIN") throw new Error("You cannot approve your own request");
 
       await tx.approval.create({
         data: {
@@ -334,7 +510,7 @@ export async function decide(f: FormData) {
         "Request",
         id,
       );
-    });
+    }, { maxWait: 15000, timeout: 30000 });
   } catch (e: any) {
     if (e.needsReview) {
       // Transaction rolled back; now mark as NEEDS_REVIEW outside transaction
@@ -349,7 +525,9 @@ export async function decide(f: FormData) {
     err = e.message;
   }
   revalidatePath("/approvals");
-  redirect(err ? `/approvals?error=${encodeURIComponent(err)}` : "/approvals");
+  revalidatePath("/requests");
+  revalidatePath(`/requests/${id}`);
+  redirect(err ? `/approvals?error=${encodeURIComponent(err)}` : `/approvals?success=${encodeURIComponent(approve ? "Request approved successfully." : "Request rejected.")}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -359,7 +537,7 @@ export async function decide(f: FormData) {
 // Self-resolution is blocked server-side matching existing self-approval guard.
 // ---------------------------------------------------------------------------
 export async function resolveNeedsReview(f: FormData) {
-  const u = await requireUser(["MANAGER", "AUTHORITY"]);
+  const u = await requireUser(["ADMIN", "MANAGER", "AUTHORITY"]);
   const id = String(f.get("id"));
   const decision = f.get("decision");
   const remarks = String(f.get("remarks") || "").trim();
@@ -372,7 +550,7 @@ export async function resolveNeedsReview(f: FormData) {
       await tx.$queryRaw`SELECT id FROM "Request" WHERE id = ${id} FOR UPDATE`;
       const r = await tx.request.findUnique({ where: { id, status: "NEEDS_REVIEW" } });
       if (!r) throw new Error("Request is not in NEEDS_REVIEW, or does not exist.");
-      if (r.requesterId === u.id) throw new Error("You cannot resolve your own request.");
+      if (r.requesterId === u.id && u.role !== "ADMIN") throw new Error("You cannot resolve your own request.");
 
       if (decision === "requeue") {
         const levels = r.levels ?? 2;
@@ -404,14 +582,15 @@ export async function resolveNeedsReview(f: FormData) {
           remarks,
         });
       }
-    });
+    }, { maxWait: 15000, timeout: 30000 });
   } catch (e: any) {
     err = e.message;
   }
   revalidatePath("/approvals");
   revalidatePath("/requests");
+  revalidatePath(`/requests/${id}`);
   if (err) redirect(`/requests/${id}/review?error=${encodeURIComponent(err)}`);
-  redirect("/requests");
+  redirect("/requests?success=Request review resolved successfully.");
 }
 
 // ---------------------------------------------------------------------------

@@ -70,7 +70,7 @@ export function AppSidebar({
   ];
 
   const governanceItems: NavItem[] = [];
-  if (user.role === "MANAGER" || user.role === "AUTHORITY") {
+  if (user.role === "MANAGER" || user.role === "AUTHORITY" || user.role === "ADMIN") {
     governanceItems.push({
       href: "/approvals",
       label: "Approvals",

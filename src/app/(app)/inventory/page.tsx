@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function InventoryPage({
   searchParams,
 }: {
-  searchParams: { q?: string; error?: string; stock?: string };
+  searchParams: { q?: string; error?: string; success?: string; stock?: string };
 }) {
   const u = await requireUser();
 
@@ -63,6 +63,7 @@ export default async function InventoryPage({
       />
 
       {searchParams.error && <div className="err">{searchParams.error}</div>}
+      {searchParams.success && <div className="ok">{searchParams.success}</div>}
 
       {/* KPI Cards Grid */}
       <div className="grid" style={{ marginBottom: 16 }}>

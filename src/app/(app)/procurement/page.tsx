@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { RecordProcurementDialog } from "./record-procurement-dialog";
 import { 
   Truck, 
   Search, 
@@ -23,7 +24,7 @@ export const dynamic = "force-dynamic";
 export default async function ProcurementHistory({
   searchParams,
 }: {
-  searchParams: { page?: string; mode?: string; status?: string; q?: string };
+  searchParams: { page?: string; mode?: string; status?: string; q?: string; error?: string; success?: string };
 }) {
   await requireUser();
   const page = Math.max(1, Number(searchParams.page) || 1);
@@ -44,7 +45,7 @@ export default async function ProcurementHistory({
     };
   }
 
-  const [records, total, totalQtyAgg, pendingCount, postedCount] = await Promise.all([
+  const [records, total, totalQtyAgg, pendingCount, postedCount, rawItems] = await Promise.all([
     db.procurementRecord.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -63,7 +64,27 @@ export default async function ProcurementHistory({
     }),
     db.procurementRecord.count({ where: { status: "PENDING" } }),
     db.procurementRecord.count({ where: { status: "POSTED" } }),
+    db.item.findMany({
+      where: { active: true },
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        sku: true,
+        name: true,
+        category: true,
+        quantity: true,
+        unit: true,
+        size: true,
+        color: true,
+        brand: true,
+      },
+    }),
   ]);
+
+  const catalogItems = rawItems.map((it) => ({
+    ...it,
+    quantity: Number(it.quantity),
+  }));
 
   const totalQuantity = Number(totalQtyAgg._sum.quantity || 0);
   const pages = Math.ceil(total / pageSize);
@@ -78,7 +99,8 @@ export default async function ProcurementHistory({
           { label: "Procurement" },
         ]}
         actions={
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <RecordProcurementDialog items={catalogItems} />
             <Link href="/imports" className="btn secondary" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <UploadCloud size={15} /> Upload Procurement
             </Link>
@@ -90,6 +112,9 @@ export default async function ProcurementHistory({
           </div>
         }
       />
+
+      {searchParams.error && <div className="err">{searchParams.error}</div>}
+      {searchParams.success && <div className="ok">{searchParams.success}</div>}
 
       {/* KPI Overview */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>

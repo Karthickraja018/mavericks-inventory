@@ -12,8 +12,10 @@ export const dynamic = "force-dynamic";
 
 export default async function RequestDetailPage({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams?: { error?: string; success?: string };
 }) {
   const u = await requireUser();
 
@@ -48,8 +50,8 @@ export default async function RequestDetailPage({
   const reqNumber = `REQ-${String(r.number).padStart(5, "0")}`;
 
   // Check if current user is the pending approver
-  const isManagerPending = r.status === "PENDING_MANAGER" && u.role === "MANAGER" && r.requesterId !== u.id;
-  const isAuthorityPending = r.status === "PENDING_AUTHORITY" && u.role === "AUTHORITY" && r.requesterId !== u.id;
+  const isManagerPending = r.status === "PENDING_MANAGER" && (u.role === "MANAGER" || u.role === "ADMIN") && (r.requesterId !== u.id || u.role === "ADMIN");
+  const isAuthorityPending = r.status === "PENDING_AUTHORITY" && (u.role === "AUTHORITY" || u.role === "ADMIN") && (r.requesterId !== u.id || u.role === "ADMIN");
   const canDecide = isManagerPending || isAuthorityPending;
 
   const totalUnits = r.lines.reduce((s, l) => s + Number(l.quantity), 0);
@@ -73,6 +75,9 @@ export default async function RequestDetailPage({
           </Link>
         }
       />
+
+      {searchParams?.error && <div className="err">{searchParams.error}</div>}
+      {searchParams?.success && <div className="ok">{searchParams.success}</div>}
 
       {/* Needs Review Alert Banner */}
       {r.status === "NEEDS_REVIEW" && (
@@ -344,7 +349,7 @@ export default async function RequestDetailPage({
                     <StatusBadge status={dist.status} size="sm" />
                   </td>
                   <td style={{ textAlign: "right" }}>
-                    <Link href={`/employees/${dist.employee.id}`}>
+                    <Link href={`/employees?tab=lookup&empId=${dist.employee.empId}`}>
                       <button className="ghost" style={{ fontSize: 11, padding: "2px 8px", minHeight: 26 }}>
                         View →
                       </button>

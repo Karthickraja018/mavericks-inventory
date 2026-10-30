@@ -671,7 +671,8 @@ label {
   font-weight: 550;
 }
 
-.ok {
+.ok,
+.notice {
   margin-bottom: 18px;
   padding: 12px 16px;
   border: 1px solid var(--success-border);
